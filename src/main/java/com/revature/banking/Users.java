@@ -2,8 +2,14 @@ package com.revature.banking;
 
 import java.security.spec.X509EncodedKeySpec;
 import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
 
-public class Users {
+public class Users implements DBContext {
+	public Connection getConnection() {
+		return DBConnectionManager.getConnection();
+	}
+	
 	int userId, roleId;
 	String userName, passWord, firstName, lastName, eMail;
 	public int getUserId() {
@@ -49,33 +55,36 @@ public class Users {
 		this.eMail = eMail;
 	}
 	
-	public boolean insert (int uid, int rid, String un, String pw,
-							String fn, String ln, String em);
+	public int insert (String un, String pw,
+			String fn, String ln, String em, Roles role) throws Exception {
+		String sql = "INSERT INTO "+
+			"users(username, password, first_name, last_name, email, role) "+
+			"VALUES (?,?,?,?,?,?::Roles) ON CONFLICT DO NOTHING RETURNING user_id;";
+		PreparedStatement ps = getConnection().prepareStatement(sql);
 		int i = 0;
-		String sql = "INSERT INTO users(role_id, username, password, " +
-						"firstName, lastName, email VALUES (?,?,?,?,?,?) " +
-						"RETURNING user_id;"";
-		PreparedStatement ps = PreparedStatement(sql);
-		ps.setInt		(++i, rid);
 		ps.setString	(++i, un);
 		ps.setString	(++i, pw);
 		ps.setString	(++i, fn);
 		ps.setString	(++i, ln);
 		ps.setString	(++i, em);
-		
-		return ps.execute();
-}
+		ps.setString	(++i, role.toString());
+		ResultSet rs = ps.executeQuery();
+		while (rs.next()) { i = rs.getInt("user_id"); System.out.println(i); }
+		return i;
+	}
 	
-	public boolean login(String un, String pw) {
+	public boolean login(String un, String pw) throws Exception {
 		final String sql = "SELECT password FROM users WHERE username = ?;";
-		Connection conn = DBConnectionManager.getConnection();
-		PreparedStatement ps = conn.prepareStatement(sql);
+		PreparedStatement ps = getConnection().prepareStatement(sql);
 		ps.setString(1, un);
 		ResultSet rs = ps.executeQuery();
 		return pw == rs.getString("password");
 	}
 		
-	public	
+	public static void main(String[] args) throws Exception {
+    	DBConnectionManager.initialize(args[0]);
+    	System.out.println(new Users().insert("cdefghi", "password",
+    			"Donald", "Trump", "potus@executive.gov", Roles.standard));
 	}
 	
 }

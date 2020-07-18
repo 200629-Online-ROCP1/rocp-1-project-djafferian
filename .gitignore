@@ -1,1 +1,3 @@
 /target/
+src/test/resources/localDBconfig.properties
+src/test/resources/remoteDBconfig.properties
