@@ -1,4 +1,4 @@
-package com.revature.banking;
+package com.revature.banking.sql;
 
 import java.sql.Connection;
 

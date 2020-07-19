@@ -1,4 +1,4 @@
-package com.revature.banking;
+package com.revature.banking.sql;
 
 import com.jcraft.jsch.JSch;
 import com.jcraft.jsch.JSchException;
