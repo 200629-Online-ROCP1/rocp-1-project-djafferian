@@ -63,16 +63,23 @@ public class Users extends Table implements DBContext {
     	DBConnectionManager.initialize(args[0]);
     	Users users = new Users();
     	Row row = users.getRow();
-    	row.put("username","fghijkl");
+    	row.put("username","jklmnopq");
     	row.put("password","password");
     	row.put("first_name","Donald");
     	row.put("last_name","Trump");
     	row.put("email","potus@executive.gov");
     	row.put("role",Roles.standard);
-    	int user_id = users.insert(row);
+    	int user_id = users.create(row);
     	System.out.println(user_id);
-    	row = users.select(user_id);
+    	row = users.read(user_id);
     	System.out.println(row.get("username"));
+    	row.put("last_name","Trumpet");
+    	row.put("role",Roles.premium);
+    	users.update(user_id,row);
+    	row = users.read(user_id);
+    	System.out.println(row.get("role"));
+    	users.delete(user_id-1);
+    	row = users.read(user_id-1);
+    	System.out.println(row);
 	}
-	
 }

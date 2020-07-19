@@ -3,16 +3,20 @@ package com.revature.banking.sql;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
 
 /**
- * This class requires that the table has a primary key composed
- * of a single column populated with auto-generated default values.
+ * For simplicity and elegance, this Table class is designed to operate
+ * on each table only one row at a time.  It requires that the table have
+ * a non-composite integer primary key.  Assigning a value to a primary
+ * key is not the task of this class.  It is up to the DBMS to provide
+ * that service.
  * 
- * @author Owner
+ * @author David N. Jafferian
  *
  */
 public abstract class Table implements DBContext {
@@ -21,22 +25,39 @@ public abstract class Table implements DBContext {
 	}
 	
 	private static final String sqlSelectColumnCount =
-			"SELECT COUNT(*) FROM information_schema.columns WHERE table_name = ?";
+			"SELECT COUNT(*) "+
+			"FROM information_schema.columns "+
+			"WHERE table_name = ?";
 	private static final String sqlSelectColumnNames =
-			"SELECT column_name, data_type FROM information_schema.columns WHERE table_name = ?";
+			"SELECT column_name, data_type, udt_name "+
+			"FROM information_schema.columns "+
+			"WHERE table_name = ?";
 	private static String packageName = Table.class.getPackageName();
 	
 	private String tableName;
 	private String primaryKey;
-	private Row row;
-	
 	public String getTableName () { return tableName; }
 	public String getPrimaryKey () { return primaryKey; }
+	
+	/**
+	 * During each instantiation of a Table object a sample row is created
+	 * to provide a template for inserts and updates and to deliver results
+	 * from selects.  Although it is exposed, only the values are mutable,
+	 * so the Table class can verify whether a row submitted as input is
+	 * the same supplied by getRow, or at least a faithful copy.
+	 */
+	private Row row;
 	public Row getRow() { return row; }
+	private String strColumnNameList;
+	private String strPlaceHolders;
+	private String whereClause;
+	private String deleteStatement;
 
 	public Table(String tn, String pk) throws Exception {
 		tableName = tn;
 		primaryKey = pk;
+		whereClause = " WHERE "+primaryKey+" = ?;";
+		deleteStatement = "DELETE FROM "+tableName+whereClause;
 		/**
 		 * Find out how many columns are in this table.
 		 */
@@ -49,34 +70,63 @@ public abstract class Table implements DBContext {
 		 * Retrieve the name and data type for each column.
 		 */
 		LinkedHashMap<String,Object> row = new LinkedHashMap<String,Object>(n-1);
+		StringBuilder sbCols = new StringBuilder(n*20);
+		StringBuilder sbVals = new StringBuilder(n*3);
+		String delimiter = "(";
 		ps = getConnection().prepareStatement(sqlSelectColumnNames);
 		ps.setString(1, tableName);
 		rs = ps.executeQuery();
 		while (rs.next()) {
 			String columnName = rs.getString(1);
 			if (columnName.equals(primaryKey)) continue;
+			sbCols.append(delimiter);
+			sbCols.append(columnName);
+			sbVals.append(delimiter);
+			sbVals.append("?");	// placeholder
+			delimiter = ",";
+			// Convert certain database types into Java object types.
 			String dataType = rs.getString(2);
 			Object o = null;
 			switch (dataType) {
-			case "USER-DEFINED" :
-				break;
 			case "integer" :
 				o = Integer.valueOf(0);
 				break;
 			case "character varying" :
 				o = new String();
 				break;
+			// ENUM
+			case "USER-DEFINED" :
+				String udt_name = rs.getString(3);
+				String className = "com.revature.banking.sql." +
+						udt_name.substring(0,1).toUpperCase() +
+						udt_name.substring(1);
+				Class<?> c = Class.forName(className);
+				if (!c.isEnum()) throw new Exception("Bizzare stuff going on in here.");
+				/**
+				 * If the column data type is an ENUM then this must be
+				 * represented as a string type cast to the ENUM value,
+				 * i.e. CAST("value" AS enum_name), in standard SQL or
+				 * this double colon syntax in Postgres :
+				 */
+				o = c.getEnumConstants()[0];
+				sbVals.append("::");
+				sbVals.append(udt_name);
+				break;
 			}
 			row.put(columnName, o);
 		}
+		sbCols.append(")");
+		sbVals.append(")");
+		strColumnNameList = sbCols.toString();
+		strPlaceHolders = sbVals.toString();
 		this.row = new Row(row);
 	}
 	
-	public int insert (Row row) throws Exception {
-		/**
-		 * First, make sure that the row passed here came from here.
-		 */
-		Exception ex = new Exception(
+	/**
+	 * A few helper methods.
+	 */
+	private void validateRowAsTemplate (Row row) throws SQLException {
+		SQLException ex = new SQLException(
 				"The Row argument did not originate from the getRow method.");
 		if (this.row.size() != row.size()) throw ex;
 		Iterator<String> i = this.row.keySet().iterator();
@@ -89,68 +139,63 @@ public abstract class Table implements DBContext {
 		j = row.keySet().iterator();
 		while (i.hasNext()) {
 			j.hasNext();
-			System.out.println(this.row.get(i.next()).getClass());
-			System.out.println(row.get(j.next()).getClass());
 			if (this.row.get(i.next()).getClass() !=
 					row.get(j.next()).getClass()) throw ex;
 		}
+	}
+	
+	private int fillInPlaceHolders (
+			PreparedStatement ps, Row row) throws SQLException {
+		Set<String> keys = row.keySet();
+		Iterator<String> i = keys.iterator();
+		int j = 1;
+		while (i.hasNext()) {
+			Object o = row.get(i.next());
+			if (o.getClass().isEnum()) {
+				ps.setString(j, o.toString());
+			} else {
+				ps.setObject(j, o);
+			}
+			j+=1;
+		}
+		return j;
+	}
+
+	private void fillInPlaceHolders (
+			PreparedStatement ps, Row row, int pk_id) throws SQLException {
+		int j = fillInPlaceHolders(ps, row);
+		ps.setInt(j, pk_id);
+	}
+
+	public int create (Row row) throws SQLException {
 		/**
-		 * Compose an prepared INSERT statement.
+		 * First, make sure that the row passed here, came from here.
+		 */
+		validateRowAsTemplate(row);
+		/**
+		 * Compose a prepared INSERT statement.
 		 */
 		StringBuilder sql = new StringBuilder("INSERT INTO ");
 		sql.append(tableName);
-		// Append the list of column names.
-		String delimiter = "(";
-		Set<String> keys = row.keySet();
-		i = keys.iterator();
-		while (i.hasNext()) {
-			sql.append(delimiter);
-			sql.append(i.next());
-			delimiter = ",";
-		}
-		// Append the place holders for the field values.
-		sql.append(") VALUES ");
-		delimiter = "(";
-		keys = row.keySet();
-		i = keys.iterator();
-		while (i.hasNext()) {
-			sql.append(delimiter);
-			/**
-			 * Here is where enum values belonging to this
-			 * package are converted to database enum values.
-			 */
-			String key = i.next();
-			Object o = row.get(key);
-			Class c = o.getClass();
-			String s = c.getName();
-			if (c.isEnum() && s.startsWith(packageName)) {
-				sql.append("CAST(? AS ");
-				sql.append(s.substring(packageName.length()+1).toLowerCase());	// +1 for the dot
-				sql.append(")");
-				row.put(key,o.toString());
-			} else {
-				sql.append("?");
-			}
-			delimiter = ",";
-		}
+		sql.append(strColumnNameList);
+		sql.append(" VALUES ");
+		sql.append(strPlaceHolders);
 		// Avoid exceptions, and ask for the primary key of the new row.
-		sql.append(") ON CONFLICT DO NOTHING RETURNING ");
+		sql.append(" ON CONFLICT DO NOTHING RETURNING ");
 		sql.append(primaryKey);
 		sql.append(";");
 		// Compile the prepared statement with the field values.
 		PreparedStatement ps = getConnection().prepareStatement(sql.toString());
-		int k = 0;
-		i = keys.iterator();
-		while (i.hasNext()) ps.setObject(k+=1, row.get(i.next()));
+		fillInPlaceHolders(ps, row);
 		// Execute the query and retrieve the primary key of the new row.
 		ResultSet rs = ps.executeQuery();
-		return rs.next() ? rs.getInt(primaryKey) : -1;
+		return rs.next() ? rs.getInt(primaryKey) : 0;
 	}
 
-	public Row select (int user_id) throws Exception {
-		String sql = "SELECT * FROM users WHERE user_id = ?;";
+	public Row read (int pk_id) throws SQLException {
+		String sql = "SELECT * FROM "+tableName+whereClause;
 		PreparedStatement ps = getConnection().prepareStatement(sql);
-		ps.setInt(1, user_id);
+		ps.setInt(1, pk_id);
 		ResultSet rs = ps.executeQuery();
 		if (!rs.next()) return null;
 		Row row = getRow();
@@ -162,5 +207,31 @@ public abstract class Table implements DBContext {
 		};
 		return row;
 	}
-
+	
+	public void update (int pk_id, Row row) throws SQLException {
+		validateRowAsTemplate(row);
+		/**
+		 * Compose a prepared UPDATE statement.
+		 */
+		StringBuilder sql = new StringBuilder("UPDATE ");
+		sql.append(tableName);
+		sql.append(" SET ");
+		// Append the list of column names.
+		sql.append(strColumnNameList);
+		sql.append(" = ");
+		sql.append(strPlaceHolders);
+		// Specify which row is to be updated.
+		sql.append(whereClause);
+		// Compile the prepared statement with the field values.
+		PreparedStatement ps = getConnection().prepareStatement(sql.toString());
+		fillInPlaceHolders(ps, row, pk_id);
+		// Execute the query.
+		ps.executeUpdate();				
+	}
+	
+	public void delete (int pk_id) throws Exception {
+		PreparedStatement ps = getConnection().prepareStatement(deleteStatement);
+		ps.setInt(1, pk_id);
+		ps.executeUpdate();				
+	}
 }
