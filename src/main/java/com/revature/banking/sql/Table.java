@@ -4,17 +4,19 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
+import java.util.Vector;
 
 /**
  * For simplicity and elegance, this Table class is designed to operate
  * on each table only one row at a time.  It requires that the table have
  * a non-composite integer primary key.  Assigning a value to a primary
- * key is not the task of this class.  It is up to the DBMS to provide
- * that service.
+ * key is not part of the task of this class.  It is up to the DBMS to
+ * provide that service.
  * 
  * @author David N. Jafferian
  *
@@ -32,10 +34,17 @@ public abstract class Table implements DBContext {
 			"SELECT column_name, data_type, udt_name "+
 			"FROM information_schema.columns "+
 			"WHERE table_name = ?";
-	private static String packageName = Table.class.getPackageName();
+	private static final String packageName = Table.class.getPackageName();
 	
-	private String tableName;
-	private String primaryKey;
+	private final String tableName;
+	private final String primaryKey;
+	private final String whereClause;
+	private final String countStatement;
+	private final String deleteStatement;
+	private final String readAllStatement;
+	private final String readOneStatement;
+	private final String strColumnNameList;
+	private final String strPlaceHolders;
 	public String getTableName () { return tableName; }
 	public String getPrimaryKey () { return primaryKey; }
 	
@@ -47,17 +56,16 @@ public abstract class Table implements DBContext {
 	 * the same supplied by getRow, or at least a faithful copy.
 	 */
 	private Row row;
-	public Row getRow() { return row; }
-	private String strColumnNameList;
-	private String strPlaceHolders;
-	private String whereClause;
-	private String deleteStatement;
+	public Row getRow() { return new Row(row); }
 
 	public Table(String tn, String pk) throws Exception {
 		tableName = tn;
 		primaryKey = pk;
-		whereClause = " WHERE "+primaryKey+" = ?;";
-		deleteStatement = "DELETE FROM "+tableName+whereClause;
+		whereClause = " WHERE "+pk+" = ?;";
+		countStatement = "SELECT COUNT(*) c FROM "+tn+";";
+		deleteStatement = "DELETE FROM "+tn+whereClause;
+		readAllStatement = "SELECT * FROM "+tn;
+		readOneStatement = readAllStatement+whereClause;
 		/**
 		 * Find out how many columns are in this table.
 		 */
@@ -69,7 +77,7 @@ public abstract class Table implements DBContext {
 		/**
 		 * Retrieve the name and data type for each column.
 		 */
-		LinkedHashMap<String,Object> row = new LinkedHashMap<String,Object>(n-1);
+		LinkedHashMap<String,Object> row = new LinkedHashMap<String,Object>(n);
 		StringBuilder sbCols = new StringBuilder(n*20);
 		StringBuilder sbVals = new StringBuilder(n*3);
 		String delimiter = "(";
@@ -78,7 +86,10 @@ public abstract class Table implements DBContext {
 		rs = ps.executeQuery();
 		while (rs.next()) {
 			String columnName = rs.getString(1);
-			if (columnName.equals(primaryKey)) continue;
+			if (columnName.equals(primaryKey)) {
+				row.put(columnName, Integer.valueOf(0));
+				continue;
+			}
 			sbCols.append(delimiter);
 			sbCols.append(columnName);
 			sbVals.append(delimiter);
@@ -97,7 +108,7 @@ public abstract class Table implements DBContext {
 			// ENUM
 			case "USER-DEFINED" :
 				String udt_name = rs.getString(3);
-				String className = "com.revature.banking.sql." +
+				String className = packageName+"."+
 						udt_name.substring(0,1).toUpperCase() +
 						udt_name.substring(1);
 				Class<?> c = Class.forName(className);
@@ -150,7 +161,9 @@ public abstract class Table implements DBContext {
 		Iterator<String> i = keys.iterator();
 		int j = 1;
 		while (i.hasNext()) {
-			Object o = row.get(i.next());
+			String key = i.next();
+			if (key.equals(primaryKey)) continue;
+			Object o = row.get(key);
 			if (o.getClass().isEnum()) {
 				ps.setString(j, o.toString());
 			} else {
@@ -161,12 +174,39 @@ public abstract class Table implements DBContext {
 		return j;
 	}
 
-	private void fillInPlaceHolders (
-			PreparedStatement ps, Row row, int pk_id) throws SQLException {
-		int j = fillInPlaceHolders(ps, row);
-		ps.setInt(j, pk_id);
+	private Row resultSetRowToRow (ResultSet rs) throws SQLException {
+		Row row = getRow();
+		Iterator<String> i = row.keySet().iterator();
+		for (int j=1; i.hasNext(); j+=1) {
+			String key = i.next();
+			Object o = row.get(key);
+			Class<?> c = o.getClass();
+			if (c.isEnum()) {
+				String s = rs.getString(j);
+				for (Object ec : c.getEnumConstants())
+					if (s.equals(ec.toString())) { o = ec; break; }
+			} else {
+				o = rs.getObject(j);
+			}
+			System.out.println(key+":"+o);
+			row.put(key, o);
+		}
+		return row;
 	}
 
+	/***
+	 * There are two ways to specify an INSERT statement to ensure that each
+	 * primary key receives its default, auto-generated value, by explicitly
+	 * using the keyword DEFAULT as the "value" of the primary key, or leaving
+	 * out the primary key altogether.  The latter is more portable, so that
+	 * is what is done here.  The consequence is that the implicit order of
+	 * the columns is broken, and the list of columns cannot be excluded from
+	 * the syntax of the INSERT statement.
+	 * 
+	 * @param row
+	 * @return
+	 * @throws SQLException
+	 */
 	public int create (Row row) throws SQLException {
 		/**
 		 * First, make sure that the row passed here, came from here.
@@ -177,7 +217,7 @@ public abstract class Table implements DBContext {
 		 */
 		StringBuilder sql = new StringBuilder("INSERT INTO ");
 		sql.append(tableName);
-		sql.append(strColumnNameList);
+		sql.append(strColumnNameList);	// Optional
 		sql.append(" VALUES ");
 		sql.append(strPlaceHolders);
 		// Avoid exceptions, and ask for the primary key of the new row.
@@ -191,24 +231,40 @@ public abstract class Table implements DBContext {
 		ResultSet rs = ps.executeQuery();
 		return rs.next() ? rs.getInt(primaryKey) : 0;
 	}
-
-	public Row read (int pk_id) throws SQLException {
-		String sql = "SELECT * FROM "+tableName+whereClause;
-		PreparedStatement ps = getConnection().prepareStatement(sql);
+	
+	public Row readOne (int pk_id) throws SQLException {
+		PreparedStatement ps = getConnection().prepareStatement(readOneStatement);
 		ps.setInt(1, pk_id);
 		ResultSet rs = ps.executeQuery();
 		if (!rs.next()) return null;
-		Row row = getRow();
-		Set<String> keys = row.keySet();
-		Iterator<String> i = keys.iterator();
-		while(i.hasNext()) {
-			String key = i.next();
-			row.put(key, rs.getString(key));
-		};
-		return row;
+		return resultSetRowToRow(rs);
 	}
 	
-	public void update (int pk_id, Row row) throws SQLException {
+	/**
+	 * The 'readAll' method retrieves a list of all of the rows in this table.
+	 * The DBMS ensures that the primary keys are a set, so storing the elements
+	 * in a ArrayList is faster than storing them into a Set.
+	 * 
+	 * Counting the number of rows before retrieving the keys is not reliable,
+	 * and useful only to estimate the needed capacity of the array.
+	 * 
+	 * @return ArrayList<Row>
+	 * @throws SQLException
+	 */
+	private int count () throws SQLException  {
+		PreparedStatement ps = getConnection().prepareStatement(countStatement);
+		ResultSet rs = ps.executeQuery();
+		return rs.next() ? rs.getInt("c") : 0;
+	}
+	public ArrayList<Row> readAll () throws SQLException {
+		PreparedStatement ps = getConnection().prepareStatement(readAllStatement);
+		ArrayList<Row> set = new ArrayList<Row>(count()+100);
+		ResultSet rs = ps.executeQuery();
+		while (rs.next()) set.add(resultSetRowToRow(rs));
+		return set;
+	}
+	
+	public void update (Row row) throws SQLException {
 		validateRowAsTemplate(row);
 		/**
 		 * Compose a prepared UPDATE statement.
@@ -224,12 +280,13 @@ public abstract class Table implements DBContext {
 		sql.append(whereClause);
 		// Compile the prepared statement with the field values.
 		PreparedStatement ps = getConnection().prepareStatement(sql.toString());
-		fillInPlaceHolders(ps, row, pk_id);
+		// Replace the last place holder with the primary key, to complete the WHERE clause.
+		ps.setInt(fillInPlaceHolders(ps, row), ((Integer)(row.get(primaryKey))).intValue());
 		// Execute the query.
 		ps.executeUpdate();				
 	}
 	
-	public void delete (int pk_id) throws Exception {
+	public void delete (int pk_id) throws SQLException {
 		PreparedStatement ps = getConnection().prepareStatement(deleteStatement);
 		ps.setInt(1, pk_id);
 		ps.executeUpdate();				

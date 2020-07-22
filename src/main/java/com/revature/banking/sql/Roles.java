@@ -9,13 +9,10 @@ public enum Roles implements DBContext {
 		return DBConnectionManager.getConnection();
 	}
 	
-	private selectAllRoles () {
-		
-	}
-
 	public static void main(String[] args) {
 		Roles[] roles = Roles.values();
 		for (int i=0; i<roles.length; i+=1) 
-		    System.out.println((i+1) + roles[i].toString());
+		    System.out.println((i+1) + " " + roles[i].toString());
+		String sql = "SELECT * FROM Roles;";
 	}
 }

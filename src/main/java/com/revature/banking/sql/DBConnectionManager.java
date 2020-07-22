@@ -25,6 +25,9 @@ class LocalUserInfo implements UserInfo {
 }
 
 public class DBConnectionManager implements AutoCloseable {
+	//private static final String propertiesFile = "src/main/resources/DBconfig.properties";
+	private static final String propertiesFile =
+			"C:\\Users\\Owner\\Revature\\rocp-1-project-djafferian\\src\\main\\resources\\DBconfig.properties";
 	private static final String dbURLRegex =
 			"^jdbc:([a-z]+):([a-z]+:)*//([a-z]+(\\.[a-z]+)*)(:([1-9][0-9]*))?/(.*)$";
 	private static final Pattern dbURLPattern = Pattern.compile(dbURLRegex);
@@ -137,13 +140,15 @@ public class DBConnectionManager implements AutoCloseable {
     		for (int i=0; i<pfL.length; i+=1) System.out.println(pfL[i]);
 		}
 	    // Get the first connection.
-	    DBConnectionManager.conn = getConnection();
+	    DBConnectionManager.conn =
+	    		DriverManager.getConnection(dbURL, dbUsername, dbPassword);
     }
 	
 
     public static Connection getConnection() {
     	try {
-	    	if (conn == null || conn.isClosed())
+        	if (conn == null) initialize(propertiesFile);
+	    	if (conn.isClosed())
 	    		conn = DriverManager.getConnection(dbURL, dbUsername, dbPassword);
 	    } catch (SQLException ex) {
 	    	// handle any exception
