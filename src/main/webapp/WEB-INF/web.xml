@@ -16,15 +16,15 @@
 	</servlet-mapping>
 	<servlet>
 		<servlet-name>AccountServlet</servlet-name>
-		<servlet-class>AccountServlet</servlet-class>
+		<servlet-class>com.revature.banking.servlets.AccountServlet</servlet-class>
 	</servlet>
 	<servlet-mapping>
-		<servlet-name>AccountsServlet</servlet-name>
+		<servlet-name>AccountServlet</servlet-name>
 		<url-pattern>/accounts</url-pattern>
 	</servlet-mapping>
 	<servlet-mapping>
 		<servlet-name>AccountServlet</servlet-name>
-		<url-pattern>/accounts/:id</url-pattern>
+		<url-pattern>/accounts/*</url-pattern>
 	</servlet-mapping>
 	<servlet-mapping>
 		<servlet-name>AccountServlet</servlet-name>
@@ -40,10 +40,10 @@
 	</servlet-mapping>
 	<servlet-mapping>
 		<servlet-name>AccountServlet</servlet-name>
-		<url-pattern>/accounts/status/:statusId</url-pattern>
+		<url-pattern>/accounts/status/*</url-pattern>
 	</servlet-mapping>
 	<servlet-mapping>
-		<servlet-name>AccountsServlet</servlet-name>
+		<servlet-name>AccountServlet</servlet-name>
 		<url-pattern>/passTime</url-pattern>
 	</servlet-mapping>
 	<!-- 

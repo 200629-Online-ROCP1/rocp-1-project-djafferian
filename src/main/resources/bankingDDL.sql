@@ -51,7 +51,7 @@ CREATE SEQUENCE banking.users_user_id_seq
 
 CREATE TABLE banking.account (
 	account_id serial NOT NULL,
-	balance numeric(2) NOT NULL,
+	balance numeric(2) NOT NULL DEFAULT 0,
 	status banking.statuses NULL,
 	"type" banking."types" NULL,
 	CONSTRAINT account_pk PRIMARY KEY (account_id)

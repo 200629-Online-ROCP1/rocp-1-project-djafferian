@@ -1,11 +1,12 @@
 package com.revature.banking.servlets;
 
 import com.revature.banking.sql.Account;
-import com.revature.banking.sql.Roles;
 import com.revature.banking.sql.Row;
+import com.revature.banking.sql.Statuses;
 
 import java.io.IOException;
-import java.io.Reader;
+import java.sql.SQLException;
+import java.util.ArrayList;
 
 import javax.servlet.ServletException;
 import javax.servlet.http.HttpServlet;
@@ -21,12 +22,17 @@ public class AccountServlet extends HttpServlet {
 		final String URI = req.getRequestURI();
 		String[] portions = URI.split("/");
 		Integer accountId = null;
+		Statuses status = null;
 		switch (portions.length) {
+		case 5:
+			status = Statuses.valueOf(portions[4]);
 		case 4:
-			try {
-				accountId = Integer.valueOf(portions[3]);
-			} catch (NumberFormatException nfe) {
-				return;
+			if (!portions[3].equals("status")) {
+				try {
+					accountId = Integer.valueOf(portions[3]);
+				} catch (NumberFormatException nfe) {
+					return;
+				}
 			}
 		case 3:
 			if (portions[2].equals("accounts")) break;
@@ -36,9 +42,10 @@ public class AccountServlet extends HttpServlet {
 		
 		try {
 			Account account = new Account();
-			JSONTools.dispenseJSON(res,
-					accountId == null ? account.readAll() :
-					account.readOne(accountId.intValue()));
+			JSONTools.dispenseJSON(res, accountId != null
+					? account.readOne(accountId.intValue())
+					: status != null ? account.readSame("status",status)
+									 : account.readAll());
 			res.setStatus(200);
 		} catch (Exception ex) {
 			ex.printStackTrace();
@@ -53,10 +60,10 @@ public class AccountServlet extends HttpServlet {
 		res.setStatus(400);	// Presume failure
 		final String URI = req.getRequestURI();
 		String[] portions = URI.split("/");
-		Integer userId = null;
+		Integer accountId = null;
 		switch (portions.length) {
 		case 3:
-			if (portions[2].equals("account")) break;
+			if (portions[2].equals("accounts")) break;
 		default:
 			return;
 		}

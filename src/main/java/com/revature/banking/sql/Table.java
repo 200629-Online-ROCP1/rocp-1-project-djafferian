@@ -5,6 +5,7 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -41,7 +42,7 @@ public abstract class Table implements DBContext {
 	private final String whereClause;
 	private final String countStatement;
 	private final String deleteStatement;
-	private final String readAllStatement;
+	protected final String readAllStatement;
 	private final String readOneStatement;
 	private final String strColumnNameList;
 	private final String strPlaceHolders;
@@ -57,12 +58,26 @@ public abstract class Table implements DBContext {
 	 */
 	private Row row;
 	public Row getRow() { return new Row(row); }
-
+	
+	/** 
+	 * In the String argument to the Connection.prepareStatement method, the
+	 * question mark, '?', is used as a placeholder for most values which are
+	 * inserted by means of a PreparedStatement setter method particular to
+	 * the type of the value.  But there is no setter method for enum types.
+	 * To work around this, the enum value is converted to a string which is
+	 * later type cast back to the enum type it was.  This is done by wrapping
+	 * the question mark in the syntax for a type cast, "CAST(? AS enum_name)".
+	 * (Postgres has an alternate syntax, "?::enum_name", which is arguably
+	 * superior yet not portable.)  The placeholder replacements are stored
+	 * for reuse in placeHolders. 
+	 */
+	private Map<String,String> placeHolders = new HashMap<String,String>();
+	
 	public Table(String tn, String pk) throws Exception {
 		tableName = tn;
 		primaryKey = pk;
-		whereClause = " WHERE "+pk+" = ?;";
-		countStatement = "SELECT COUNT(*) c FROM "+tn+";";
+		whereClause = " WHERE "+pk+" = ?";
+		countStatement = "SELECT COUNT(*) c FROM "+tn;
 		deleteStatement = "DELETE FROM "+tn+whereClause;
 		readAllStatement = "SELECT * FROM "+tn;
 		readOneStatement = readAllStatement+whereClause;
@@ -93,17 +108,19 @@ public abstract class Table implements DBContext {
 			sbCols.append(delimiter);
 			sbCols.append(columnName);
 			sbVals.append(delimiter);
-			sbVals.append("?");	// placeholder
-			delimiter = ",";
+			String placeholder = "?";
 			// Convert certain database types into Java object types.
 			String dataType = rs.getString(2);
 			Object o = null;
 			switch (dataType) {
+			case "character varying" :
+				o = new String();
+				break;
 			case "integer" :
 				o = Integer.valueOf(0);
 				break;
-			case "character varying" :
-				o = new String();
+			case "numeric" :
+				o = Double.valueOf(0);
 				break;
 			// ENUM
 			case "USER-DEFINED" :
@@ -113,18 +130,15 @@ public abstract class Table implements DBContext {
 						udt_name.substring(1);
 				Class<?> c = Class.forName(className);
 				if (!c.isEnum()) throw new Exception("Bizzare stuff going on in here.");
-				/**
-				 * If the column data type is an ENUM then this must be
-				 * represented as a string type cast to the ENUM value,
-				 * i.e. CAST("value" AS enum_name), in standard SQL or
-				 * this double colon syntax in Postgres :
-				 */
 				o = c.getEnumConstants()[0];
-				sbVals.append("::");
-				sbVals.append(udt_name);
+				placeholder = "CAST(? AS "+udt_name+")";
+				//placeholder = "?::+udt_name;
+				placeHolders.put(columnName, placeholder);
 				break;
 			}
+			sbVals.append(placeholder);
 			row.put(columnName, o);
+			delimiter = ",";
 		}
 		sbCols.append(")");
 		sbVals.append(")");
@@ -136,6 +150,9 @@ public abstract class Table implements DBContext {
 	/**
 	 * A few helper methods.
 	 */
+	private String placeholder(Object o) {
+		
+	}
 	private void validateRowAsTemplate (Row row) throws SQLException {
 		SQLException ex = new SQLException(
 				"The Row argument did not originate from the getRow method.");
@@ -150,8 +167,11 @@ public abstract class Table implements DBContext {
 		j = row.keySet().iterator();
 		while (i.hasNext()) {
 			j.hasNext();
-			if (this.row.get(i.next()).getClass() !=
-					row.get(j.next()).getClass()) throw ex;
+			String thiskey = i.next(), thatkey = j.next();
+			System.out.println(this.row.get(thiskey).getClass());
+			System.out.println(row.get(thatkey).getClass());
+			if (this.row.get(thiskey).getClass() !=
+					row.get(thatkey).getClass()) throw ex;
 		}
 	}
 	
@@ -174,7 +194,7 @@ public abstract class Table implements DBContext {
 		return j;
 	}
 
-	private Row resultSetRowToRow (ResultSet rs) throws SQLException {
+	protected final Row resultSetRowToRow (ResultSet rs) throws SQLException {
 		Row row = getRow();
 		Iterator<String> i = row.keySet().iterator();
 		for (int j=1; i.hasNext(); j+=1) {
@@ -264,6 +284,19 @@ public abstract class Table implements DBContext {
 		return set;
 	}
 	
+	public ArrayList<Row> readSame (String colName, Object value) throws SQLException {
+		String placeholder = placeHolders.get(colName);
+		if (placeholder == null) placeholder = "?";
+		else value = value.toString();
+		String sql = readAllStatement+" WHERE "+colName+" = "+placeholder;
+		PreparedStatement ps = getConnection().prepareStatement(sql);
+		ps.setObject(1, value);
+		ArrayList<Row> set = new ArrayList<Row>();
+		ResultSet rs = ps.executeQuery();
+		while (rs.next()) set.add(resultSetRowToRow(rs));
+		return set;
+	}
+
 	public void update (Row row) throws SQLException {
 		validateRowAsTemplate(row);
 		/**

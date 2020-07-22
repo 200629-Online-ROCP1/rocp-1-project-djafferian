@@ -4,10 +4,12 @@ import com.eclipsesource.json.Json;
 import com.eclipsesource.json.JsonObject;
 import com.eclipsesource.json.JsonObject.Member;
 import com.eclipsesource.json.JsonValue;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.revature.banking.sql.Roles;
 import com.revature.banking.sql.Row;
 
+import java.io.IOException;
 import java.io.Reader;
 
 import javax.servlet.http.HttpServletRequest;
@@ -17,12 +19,16 @@ public final class JSONTools {
 
 	private JSONTools() {}
 
-	// This is the only use for Jackson Databind, so be rid of it asap.
+	// This is the only use of Jackson Databind, until
+	// I can put com.eclipsesource.json classes to the task.
 	public static final ObjectMapper om = new ObjectMapper();
-	public static void dispenseJSON (HttpServletResponse res, Object o) {
+	public static void dispenseJSON (HttpServletResponse res, Object o)
+			throws IOException, JsonProcessingException {
 		res.getWriter().print(om.writeValueAsString(o));
 	}
-	public static boolean receiveJSON (HttpServletRequest req, Row row) {
+	
+	public static boolean receiveJSON (HttpServletRequest req, Row row)
+			throws IOException {
 		JsonValue jsonRow = Json.parse((Reader)req.getReader());
 		if (!jsonRow.isObject()) return false;
 		JsonObject jsonFields = jsonRow.asObject();
