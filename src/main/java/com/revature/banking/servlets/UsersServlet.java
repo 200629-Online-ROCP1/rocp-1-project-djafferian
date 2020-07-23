@@ -13,6 +13,8 @@ import java.io.IOException;
 import java.io.Reader;
 import java.sql.SQLException;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Map;
 
 import javax.servlet.ServletException;
 import javax.servlet.http.HttpServlet;
@@ -49,7 +51,11 @@ public class UsersServlet extends HttpServlet {
 					userId == null ? users.readAll():
 					users.readOne(userId.intValue()));
 			res.setStatus(200);
-		} catch (Exception ex) {
+	    } catch (SQLException ex) {
+	    	// handle any exception
+	    	System.err.println("SQLException: " + ex.getMessage());
+	    	System.err.println("SQLState: " + ex.getSQLState());
+	    	System.err.println("VendorError: " + ex.getErrorCode());
 			ex.printStackTrace();
 			res.setStatus(501);
 			return;
@@ -77,6 +83,10 @@ public class UsersServlet extends HttpServlet {
 			users.update(row);
 			res.setStatus(200);
 		} catch (Exception ex) {
+	    	// handle any exception
+	    	System.err.println("SQLException: " + ex.getMessage());
+	    	System.err.println("SQLState: " + ex.getSQLState());
+	    	System.err.println("VendorError: " + ex.getErrorCode());
 			ex.printStackTrace();
 			res.setStatus(501);
 			return;
@@ -107,17 +117,20 @@ public class UsersServlet extends HttpServlet {
 		}
 		try {
 			Users users = new Users();
+			Row row = users.getRow();
 			if (portions[2].equals("login")) {
-				String[] credentials = JSONTools.receiveJSONCredentials(req);
-				if (credentials != null) {
-					ArrayList<Row> rows = users.readSome("username",credentials[0]);
-					if (1 < rows.size()) { res.setStatus(501); return; }
+				Map<String,Object> credentials = new HashMap<String,Object>();
+				credentials.put("username","");
+				credentials.put("password","");
+				if (JSONTools.receiveJSON(req, credentials)) {
+					ArrayList<Row> rows = users.readSome("username",credentials.get("username"));
+					if (1 < rows.size()) { res.setStatus(500); return; }
 					if (1 == rows.size()) {
-						Row row = rows.get(0);
-						if (row.get("password").equals(credentials[1])) {
+						row = rows.get(0);
+						if (row.get("password").equals(credentials.get("password"))) {
 							JSONTools.dispenseJSON(res, row);
 							HttpSession session = req.getSession();
-							session.setAttribute("username",credentials[0]);
+							session.setAttribute("username",credentials.get("username"));
 							res.setStatus(200);
 							return;
 						}
@@ -127,7 +140,6 @@ public class UsersServlet extends HttpServlet {
 				res.setStatus(400);
 			}
 			if (portions[2].equals("register")) {
-				Row row = users.getRow();
 				if (JSONTools.receiveJSON(req, row)) {
 					row.put("user_id",0);	// Necessary ?
 					int user_id = users.create(row);
@@ -141,6 +153,10 @@ public class UsersServlet extends HttpServlet {
 				res.setStatus(400);
 			}
 		} catch (SQLException ex) {
+	    	// handle any exception
+	    	System.err.println("SQLException: " + ex.getMessage());
+	    	System.err.println("SQLState: " + ex.getSQLState());
+	    	System.err.println("VendorError: " + ex.getErrorCode());
 			ex.printStackTrace();
 			res.setStatus(501);
 		}
