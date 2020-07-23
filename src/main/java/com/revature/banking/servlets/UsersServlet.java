@@ -11,6 +11,7 @@ import com.revature.banking.sql.Users;
 
 import java.io.IOException;
 import java.io.Reader;
+import java.sql.SQLException;
 import java.util.ArrayList;
 
 import javax.servlet.ServletException;
@@ -89,26 +90,6 @@ public class UsersServlet extends HttpServlet {
 		final String URI = req.getRequestURI();
 		String[] portions = URI.split("/");
 		if (portions.length != 3) return;
-		if (portions[2].equals("login")) {
-			String[] credentials = JSONTools.receiveJSONCredentials(req);
-			Users users = new Users();
-			ArrayList<Row> rows = users.readSome("username",credentials[0]);
-			if (0 < rows.size()) {
-				res.setStatus(501);
-				return;
-			} if (1 == rows.size()) {
-				Row row = rows.get(0);
-				if (credentials[1].equals(row.get("password"))) {
-					JSONTools.dispenseJSON(res, row);
-					HttpSession session = req.getSession();
-					session.setAttribute("username",credentials[0]);
-					res.setStatus(200);
-					return;
-				}
-			}
-			res.getWriter().print("{ \"message\": \"Invalid Credentials\" }");
-			res.setStatus(400);
-		}
 		if (portions[2].equals("logout")) {
 			HttpSession session = req.getSession(false);
 			if (session != null) {
@@ -122,25 +103,46 @@ public class UsersServlet extends HttpServlet {
 						"\"There was no user logged into the session\" }");
 				res.setStatus(400);				
 			}
+			return;
 		}
-		if (portions[2].equals("register")) {
-			try {
-				Users users = new Users();
-				Row row = users.getRow();
-				if (!JSONTools.receiveJSON(req, row)) return;
-				row.put("user_id",0);	// Necessary ?
-				int user_id = users.create(row);
-				if (user_id == 0) {
-					res.getWriter().print("{ \"message\": \"Invalid fields\" }");
-					res.setStatus(400);
-				} else {
-					JSONTools.dispenseJSON(res, users.readOne(user_id));
-					res.setStatus(201);
+		try {
+			Users users = new Users();
+			if (portions[2].equals("login")) {
+				String[] credentials = JSONTools.receiveJSONCredentials(req);
+				if (credentials != null) {
+					ArrayList<Row> rows = users.readSome("username",credentials[0]);
+					if (1 < rows.size()) { res.setStatus(501); return; }
+					if (1 == rows.size()) {
+						Row row = rows.get(0);
+						if (row.get("password").equals(credentials[1])) {
+							JSONTools.dispenseJSON(res, row);
+							HttpSession session = req.getSession();
+							session.setAttribute("username",credentials[0]);
+							res.setStatus(200);
+							return;
+						}
+					}
 				}
-			} catch (Exception ex) {
-				ex.printStackTrace();
-				res.setStatus(501);
+				res.getWriter().print("{ \"message\": \"Invalid Credentials\" }");
+				res.setStatus(400);
 			}
+			if (portions[2].equals("register")) {
+				Row row = users.getRow();
+				if (JSONTools.receiveJSON(req, row)) {
+					row.put("user_id",0);	// Necessary ?
+					int user_id = users.create(row);
+					if (0 < user_id) {
+						JSONTools.dispenseJSON(res, users.readOne(user_id));
+						res.setStatus(201);
+						return;
+					}
+				}
+				res.getWriter().print("{ \"message\": \"Invalid fields\" }");
+				res.setStatus(400);
+			}
+		} catch (SQLException ex) {
+			ex.printStackTrace();
+			res.setStatus(501);
 		}
 	}
 }

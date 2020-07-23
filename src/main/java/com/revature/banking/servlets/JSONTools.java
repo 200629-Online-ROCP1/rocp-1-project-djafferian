@@ -32,10 +32,16 @@ public final class JSONTools {
 		JsonValue jsonParsed = Json.parse((Reader)req.getReader());
 		if (!jsonParsed.isObject()) return null;
 		JsonObject jsonCredentials = jsonParsed.asObject();
+		if (jsonCredentials.size() != 2) return null;
+		JsonValue username = jsonCredentials.get("username");
+		if (username == null) return null;
+		JsonValue password = jsonCredentials.get("password");
+		if (password == null) return null;
 		String[] credentials = new String[2];
-		credentials[0] = jsonCredentials.get("username").asString();
-		credentials[1] = jsonCredentials.get("password").asString();
+		credentials[0] = username.asString();
+		credentials[1] = password.asString();
 		return credentials;
+	}
 	
 	public static boolean receiveJSON (HttpServletRequest req, Row row)
 			throws IOException {

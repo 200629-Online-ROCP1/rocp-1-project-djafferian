@@ -1,14 +1,14 @@
 package com.revature.banking.sql;
 
 import java.sql.Connection;
-import javax.servlet.ServletException;
+import java.sql.SQLException;
 
 public class Account extends Table implements DBContext {
 	public Connection getConnection() {
 		return DBConnectionManager.getConnection();
 	}
 	
-	public Account() throws ServletException {
+	public Account() throws SQLException {
 		super("account","account_id");
 	}
 

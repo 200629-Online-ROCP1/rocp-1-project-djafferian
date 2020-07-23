@@ -1,17 +1,14 @@
 package com.revature.banking.sql;
 
-import java.security.spec.X509EncodedKeySpec;
 import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
-import java.util.Map;
+import java.sql.SQLException;
 
 public class Users extends Table implements DBContext {
 	public Connection getConnection() {
 		return DBConnectionManager.getConnection();
 	}
 	
-	public Users() throws ServletException {
+	public Users() throws SQLException {
 		super("users","user_id");
 	}
 
