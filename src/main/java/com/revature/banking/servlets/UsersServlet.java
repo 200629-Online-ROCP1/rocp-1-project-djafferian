@@ -173,7 +173,7 @@ public class UsersServlet extends HttpServlet {
 						}
 					}
 				}
-				JSONTools.dispenseJSONmessage(res, "Invalid Credentials");
+				JSONTools.dispenseJSONMessage(res, "Invalid Credentials");
 				res.setStatus(400);
 			}
 			if (portions[2].equals("register")) {
