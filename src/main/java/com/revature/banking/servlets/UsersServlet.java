@@ -41,11 +41,29 @@ public class UsersServlet extends HttpServlet {
 			}
 		case 3:
 			if (portions[2].equals("users")) break;
+			HttpSession session = req.getSession(false);
+			if (session == null) JSONTools.securityBreach(req, res);
+			Roles role = (Roles)session.getAttribute("role");
+			if (role !=  Roles.administrator && role != Roles.employee) {
+				JSONTools.securityBreach(req, res);
+				return;
+			}
 		default:
 			return;
 		}
 		
 		try {
+			HttpSession session = req.getSession(false);
+			if (session == null) {
+				JSONTools.securityBreach(req, res);
+				return;
+			}
+			Roles role = (Roles)session.getAttribute("role");
+			if (role !=  Roles.administrator && role != Roles.employee &&
+					userId != (Integer)session.getAttribute("user_id")) {
+				JSONTools.securityBreach(req, res);
+				return;
+			}
 			Users users = new Users();
 			JSONTools.dispenseJSON(res,
 					userId == null ? users.readAll():
@@ -80,9 +98,22 @@ public class UsersServlet extends HttpServlet {
 			Users users = new Users();
 			Row row = users.getRow();
 			if (!JSONTools.receiveJSON(req, row)) return;
+			
+			HttpSession session = req.getSession(false);
+			if (session == null) {
+				JSONTools.securityBreach(req, res);
+				return;
+			}
+			Roles role = (Roles)session.getAttribute("role");
+			if (role !=  Roles.administrator &&
+					row.get("user_id") != (Integer)session.getAttribute("user_id")) {
+				JSONTools.securityBreach(req, res);
+				return;
+			}
+			
 			users.update(row);
 			res.setStatus(200);
-		} catch (Exception ex) {
+		} catch (SQLException ex) {
 	    	// handle any exception
 	    	System.err.println("SQLException: " + ex.getMessage());
 	    	System.err.println("SQLState: " + ex.getSQLState());
@@ -105,12 +136,12 @@ public class UsersServlet extends HttpServlet {
 			if (session != null) {
 				Object username = session.getAttribute("username");
 				session.invalidate();
-				res.getWriter().print("{ \"message\": "+
-						"\"You have successfully logged out "+username+"\" }");
+				JSONTools.dispenseJSONMessage(res,
+						"You have successfully logged out "+username);
 				res.setStatus(200);
 			} else {
-				res.getWriter().print("{ \"message\": "+
-						"\"There was no user logged into the session\" }");
+				JSONTools.dispenseJSONMessage(res,
+						"There was no user logged into the session");
 				res.setStatus(400);				
 			}
 			return;
@@ -119,6 +150,10 @@ public class UsersServlet extends HttpServlet {
 			Users users = new Users();
 			Row row = users.getRow();
 			if (portions[2].equals("login")) {
+				if (req.getSession(false) != null) {
+					JSONTools.securityBreach(req, res);
+					return;
+				}
 				Map<String,Object> credentials = new HashMap<String,Object>();
 				credentials.put("username","");
 				credentials.put("password","");
@@ -127,19 +162,27 @@ public class UsersServlet extends HttpServlet {
 					if (1 < rows.size()) { res.setStatus(500); return; }
 					if (1 == rows.size()) {
 						row = rows.get(0);
-						if (row.get("password").equals(credentials.get("password"))) {
-							JSONTools.dispenseJSON(res, row);
+						if (credentials.get("password").equals(row.get("password"))) {
 							HttpSession session = req.getSession();
-							session.setAttribute("username",credentials.get("username"));
+							session.setAttribute("user_id", row.get("user_id"));
+							session.setAttribute("username",row.get("username"));
+							session.setAttribute("role", row.get("role"));
+							JSONTools.dispenseJSON(res, row);
 							res.setStatus(200);
 							return;
 						}
 					}
 				}
-				res.getWriter().print("{ \"message\": \"Invalid Credentials\" }");
+				JSONTools.dispenseJSONmessage(res, "Invalid Credentials");
 				res.setStatus(400);
 			}
 			if (portions[2].equals("register")) {
+				HttpSession session = req.getSession(false);
+				if (session == null ||
+						session.getAttribute("role") != Roles.administrator) {
+					JSONTools.securityBreach(req, res);
+					return;
+				}
 				if (JSONTools.receiveJSON(req, row)) {
 					row.put("user_id",0);	// Necessary ?
 					int user_id = users.create(row);
@@ -149,7 +192,7 @@ public class UsersServlet extends HttpServlet {
 						return;
 					}
 				}
-				res.getWriter().print("{ \"message\": \"Invalid fields\" }");
+				JSONTools.dispenseJSONmessage(res, "Invalid fields");
 				res.setStatus(400);
 			}
 		} catch (SQLException ex) {

@@ -1,6 +1,8 @@
 package com.revature.banking.servlets;
 
 import com.revature.banking.sql.Account;
+import com.revature.banking.sql.AccountUsers;
+import com.revature.banking.sql.Roles;
 import com.revature.banking.sql.Row;
 import com.revature.banking.sql.Statuses;
 import com.revature.banking.sql.Users;
@@ -46,6 +48,24 @@ public class AccountServlet extends HttpServlet {
 		
 		try {
 			Account account = new Account();
+			Row row = account.getRow();
+			if (!JSONTools.receiveJSON(req, row)) return;
+			accountId = (Integer)row.get("account_id");
+			AccountUsers account_users = new AccountUsers();
+			
+			HttpSession session = req.getSession(false);
+			if (session == null) {
+				JSONTools.securityBreach(req, res);
+				return;
+			}
+			Roles role = (Roles)session.getAttribute("role");
+			if (role !=  Roles.administrator &&
+					!account_users.accountOwner(accountId,
+							(Integer)session.getAttribute("user_id"))) {
+				JSONTools.securityBreach(req, res);
+				return;
+			}
+
 			JSONTools.dispenseJSON(res, accountId != null
 					? account.readOne(accountId.intValue())
 					: status != null ? account.readSome("status",status)
@@ -69,6 +89,7 @@ public class AccountServlet extends HttpServlet {
 		final String URI = req.getRequestURI();
 		String[] portions = URI.split("/");
 		Integer accountId = null;
+		Integer userId = null;
 		switch (portions.length) {
 		case 3:
 			if (portions[2].equals("accounts")) break;
@@ -80,6 +101,22 @@ public class AccountServlet extends HttpServlet {
 			Account account = new Account();
 			Row row = account.getRow();
 			if (!JSONTools.receiveJSON(req, row)) return;
+			accountId = (Integer)row.get("account_id");
+			AccountUsers account_users = new AccountUsers();
+			
+			HttpSession session = req.getSession(false);
+			if (session == null) {
+				JSONTools.securityBreach(req, res);
+				return;
+			}
+			Roles role = (Roles)session.getAttribute("role");
+			if (role !=  Roles.administrator &&
+					!account_users.accountOwner(accountId,
+							(Integer)session.getAttribute("user_id"))) {
+				JSONTools.securityBreach(req, res);
+				return;
+			}
+			
 			account.update(row);
 			res.setStatus(200);
 		} catch (SQLException ex) {
@@ -130,9 +167,10 @@ public class AccountServlet extends HttpServlet {
 				targetRow.put("balance", targetBalance+amount);
 				account.update(sourceRow);
 				account.update(targetRow);
-				res.getWriter().print("{\"message\": \"$"+amount+
+				JSONTools.dispenseJSONMessage(res, "$"+amount+
 						" has been transferred to Account #"+
-						txn.get("sourceAccountId")+" to Account #"+"\"}");
+						txn.get("sourceAccountId")+" to Account #"+
+						txn.get("targetAccountId"));
 				res.setStatus(200);
 			} else {
 				Map<String,Object> txn = new HashMap<String,Object>();

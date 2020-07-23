@@ -27,7 +27,19 @@ public final class JSONTools {
 			throws IOException, JsonProcessingException {
 		res.getWriter().print(om.writeValueAsString(o));
 	}
-
+	
+	public static void dispenseJSONMessage(HttpServletResponse res, String message)
+			throws IOException {
+		JsonObject jo = new JsonObject();
+		jo.set("message", message).writeTo(res.getWriter());
+	}
+	public static void securityBreach(HttpServletRequest req, HttpServletResponse res)
+			throws IOException {
+		req.getSession().invalidate();
+		JSONTools.dispenseJSONMessage(res, "The requested action is not permitted");
+		res.setStatus(401);
+	}
+	
 	public static boolean receiveJSON (HttpServletRequest req, Map<String,Object> map)
 			throws IOException {
 		JsonValue jsonRow = Json.parse((Reader)req.getReader());

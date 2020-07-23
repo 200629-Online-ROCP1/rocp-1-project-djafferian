@@ -87,6 +87,8 @@ CREATE TABLE banking.users (
 CREATE TABLE banking.account_users (
 	account_id int4 NOT NULL,
 	user_id int4 NOT NULL,
+	account_users_id serial NOT NULL,
+	CONSTRAINT account_users_pk PRIMARY KEY (account_users_id),
 	CONSTRAINT account_users_fk FOREIGN KEY (account_id) REFERENCES account(account_id),
 	CONSTRAINT account_users_fk_1 FOREIGN KEY (user_id) REFERENCES users(user_id)
 );
