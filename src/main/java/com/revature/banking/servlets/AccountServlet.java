@@ -44,7 +44,7 @@ public class AccountServlet extends HttpServlet {
 			Account account = new Account();
 			JSONTools.dispenseJSON(res, accountId != null
 					? account.readOne(accountId.intValue())
-					: status != null ? account.readSame("status",status)
+					: status != null ? account.readSome("status",status)
 									 : account.readAll());
 			res.setStatus(200);
 		} catch (Exception ex) {

@@ -73,7 +73,8 @@ CREATE TABLE banking.users (
 	email varchar NOT NULL,
 	"role" banking.roles NULL,
 	CONSTRAINT users_pk PRIMARY KEY (user_id),
-	CONSTRAINT users_un UNIQUE (username)
+	CONSTRAINT users_un UNIQUE (username),
+	CONSTRAINT users_un_1 UNIQUE (email)
 );
 
 
@@ -90,3 +91,5 @@ CREATE TABLE banking.account_users (
 	CONSTRAINT account_users_fk_1 FOREIGN KEY (user_id) REFERENCES users(user_id)
 );
 
+INSERT INTO banking.users VALUES (0,'djafferian','password',
+'David','Jafferian','djafferian@gmail.com','administrator');

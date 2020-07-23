@@ -11,18 +11,10 @@ public class Users extends Table implements DBContext {
 		return DBConnectionManager.getConnection();
 	}
 	
-	public Users() throws Exception {
+	public Users() throws ServletException {
 		super("users","user_id");
 	}
 
-	public boolean login(String un, String pw) throws Exception {
-		final String sql = "SELECT password FROM users WHERE username = ?;";
-		PreparedStatement ps = getConnection().prepareStatement(sql);
-		ps.setString(1, un);
-		ResultSet rs = ps.executeQuery();
-		return pw == rs.getString("password");
-	}
-		
 	public static void main(String[] args) throws Exception {
     	DBConnectionManager.initialize(args[0]);
     	Users users = new Users();

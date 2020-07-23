@@ -26,6 +26,16 @@ public final class JSONTools {
 			throws IOException, JsonProcessingException {
 		res.getWriter().print(om.writeValueAsString(o));
 	}
+
+	public static String[] receiveJSONCredentials (HttpServletRequest req)
+			throws IOException {
+		JsonValue jsonParsed = Json.parse((Reader)req.getReader());
+		if (!jsonParsed.isObject()) return null;
+		JsonObject jsonCredentials = jsonParsed.asObject();
+		String[] credentials = new String[2];
+		credentials[0] = jsonCredentials.get("username").asString();
+		credentials[1] = jsonCredentials.get("password").asString();
+		return credentials;
 	
 	public static boolean receiveJSON (HttpServletRequest req, Row row)
 			throws IOException {

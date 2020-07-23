@@ -12,6 +12,8 @@ import java.util.Map;
 import java.util.Set;
 import java.util.Vector;
 
+import javax.servlet.ServletException;
+
 /**
  * For simplicity and elegance, this Table class is designed to operate
  * on each table only one row at a time.  It requires that the table have
@@ -73,7 +75,7 @@ public abstract class Table implements DBContext {
 	 */
 	private Map<String,String> placeHolders = new HashMap<String,String>();
 	
-	public Table(String tn, String pk) throws Exception {
+	public Table(String tn, String pk) throws SQLException {
 		tableName = tn;
 		primaryKey = pk;
 		whereClause = " WHERE "+pk+" = ?";
@@ -128,8 +130,14 @@ public abstract class Table implements DBContext {
 				String className = packageName+"."+
 						udt_name.substring(0,1).toUpperCase() +
 						udt_name.substring(1);
-				Class<?> c = Class.forName(className);
-				if (!c.isEnum()) throw new Exception("Bizzare stuff going on in here.");
+				Class<?> c = null;
+				try {
+					c = Class.forName(className);
+				} catch (ClassNotFoundException cnfe) {
+					System.err.println("Does class "+className+" exist ?");
+					System.exit(1);
+				}
+				assert c.isEnum();
 				o = c.getEnumConstants()[0];
 				placeholder = "CAST(? AS "+udt_name+")";
 				//placeholder = "?::+udt_name;
@@ -150,9 +158,6 @@ public abstract class Table implements DBContext {
 	/**
 	 * A few helper methods.
 	 */
-	private String placeholder(Object o) {
-		
-	}
 	private void validateRowAsTemplate (Row row) throws SQLException {
 		SQLException ex = new SQLException(
 				"The Row argument did not originate from the getRow method.");
@@ -284,7 +289,7 @@ public abstract class Table implements DBContext {
 		return set;
 	}
 	
-	public ArrayList<Row> readSame (String colName, Object value) throws SQLException {
+	public ArrayList<Row> readSome (String colName, Object value) throws SQLException {
 		String placeholder = placeHolders.get(colName);
 		if (placeholder == null) placeholder = "?";
 		else value = value.toString();

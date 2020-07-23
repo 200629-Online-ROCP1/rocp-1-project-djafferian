@@ -11,17 +11,19 @@ import com.revature.banking.sql.Users;
 
 import java.io.IOException;
 import java.io.Reader;
+import java.util.ArrayList;
 
 import javax.servlet.ServletException;
 import javax.servlet.http.HttpServlet;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
+import javax.servlet.http.HttpSession;
 
 public class UsersServlet extends HttpServlet {
 	public static final ObjectMapper om = new ObjectMapper();
 
 	protected void doGet(HttpServletRequest req, HttpServletResponse res)
-			throws ServletException, IOException {
+			throws IOException, ServletException {
 		res.setContentType("application/json");
 		res.setStatus(404);	// Presume failure
 		final String URI = req.getRequestURI();
@@ -77,6 +79,68 @@ public class UsersServlet extends HttpServlet {
 			ex.printStackTrace();
 			res.setStatus(501);
 			return;
+		}
+	}
+
+	protected void doPost(HttpServletRequest req, HttpServletResponse res)
+			throws ServletException, IOException {
+		res.setContentType("application/json");
+		res.setStatus(400);	// Presume failure
+		final String URI = req.getRequestURI();
+		String[] portions = URI.split("/");
+		if (portions.length != 3) return;
+		if (portions[2].equals("login")) {
+			String[] credentials = JSONTools.receiveJSONCredentials(req);
+			Users users = new Users();
+			ArrayList<Row> rows = users.readSome("username",credentials[0]);
+			if (0 < rows.size()) {
+				res.setStatus(501);
+				return;
+			} if (1 == rows.size()) {
+				Row row = rows.get(0);
+				if (credentials[1].equals(row.get("password"))) {
+					JSONTools.dispenseJSON(res, row);
+					HttpSession session = req.getSession();
+					session.setAttribute("username",credentials[0]);
+					res.setStatus(200);
+					return;
+				}
+			}
+			res.getWriter().print("{ \"message\": \"Invalid Credentials\" }");
+			res.setStatus(400);
+		}
+		if (portions[2].equals("logout")) {
+			HttpSession session = req.getSession(false);
+			if (session != null) {
+				Object username = session.getAttribute("username");
+				session.invalidate();
+				res.getWriter().print("{ \"message\": "+
+						"\"You have successfully logged out "+username+"\" }");
+				res.setStatus(200);
+			} else {
+				res.getWriter().print("{ \"message\": "+
+						"\"There was no user logged into the session\" }");
+				res.setStatus(400);				
+			}
+		}
+		if (portions[2].equals("register")) {
+			try {
+				Users users = new Users();
+				Row row = users.getRow();
+				if (!JSONTools.receiveJSON(req, row)) return;
+				row.put("user_id",0);	// Necessary ?
+				int user_id = users.create(row);
+				if (user_id == 0) {
+					res.getWriter().print("{ \"message\": \"Invalid fields\" }");
+					res.setStatus(400);
+				} else {
+					JSONTools.dispenseJSON(res, users.readOne(user_id));
+					res.setStatus(201);
+				}
+			} catch (Exception ex) {
+				ex.printStackTrace();
+				res.setStatus(501);
+			}
 		}
 	}
 }

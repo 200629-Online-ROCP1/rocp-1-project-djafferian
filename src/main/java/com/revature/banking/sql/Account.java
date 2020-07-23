@@ -1,20 +1,14 @@
 package com.revature.banking.sql;
 
 import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
-import java.sql.SQLException;
-import java.util.ArrayList;
+import javax.servlet.ServletException;
 
 public class Account extends Table implements DBContext {
 	public Connection getConnection() {
 		return DBConnectionManager.getConnection();
 	}
 	
-	private final String whereClause = " WHERE status = ?";
-	private final String readByStatusStatement = readAllStatement + whereClause;
-
-	public Account() throws Exception {
+	public Account() throws ServletException {
 		super("account","account_id");
 	}
 
