@@ -192,7 +192,7 @@ public class UsersServlet extends HttpServlet {
 						return;
 					}
 				}
-				JSONTools.dispenseJSONmessage(res, "Invalid fields");
+				JSONTools.dispenseJSONMessage(res, "Invalid fields");
 				res.setStatus(400);
 			}
 		} catch (SQLException ex) {
