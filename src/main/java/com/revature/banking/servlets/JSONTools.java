@@ -37,7 +37,7 @@ public final class JSONTools {
 			throws IOException {
 		req.getSession().invalidate();
 		JSONTools.dispenseJSONMessage(res, "The requested action is not permitted");
-		res.setStatus(401);
+		res.setStatus(res.SC_UNAUTHORIZED);
 	}
 	
 	public static boolean receiveJSON (HttpServletRequest req, Map<String,Object> map)

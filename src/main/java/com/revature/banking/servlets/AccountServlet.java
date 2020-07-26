@@ -9,7 +9,6 @@ import com.revature.banking.sql.Users;
 
 import java.io.IOException;
 import java.sql.SQLException;
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -21,103 +20,32 @@ import javax.servlet.http.HttpSession;
 
 public class AccountServlet extends HttpServlet {
 
+	@SuppressWarnings("static-access")
+	private void handleSQLException (SQLException ex, HttpServletResponse res) {
+    	System.err.println("SQLException: " + ex.getMessage());
+    	System.err.println("SQLState: " + ex.getSQLState());
+    	System.err.println("VendorError: " + ex.getErrorCode());
+		ex.printStackTrace();
+		res.setStatus(res.SC_INTERNAL_SERVER_ERROR);
+	}
+
 	protected void doGet(HttpServletRequest req, HttpServletResponse res)
 			throws ServletException, IOException {
 		res.setContentType("application/json");
-		res.setStatus(404);	// Presume failure
-		final String URI = req.getRequestURI();
-		String[] portions = URI.split("/");
-		Integer accountId = null;
-		Statuses status = null;
-		switch (portions.length) {
-		case 5:
-			status = Statuses.valueOf(portions[4]);
-		case 4:
-			if (!portions[3].equals("status")) {
-				try {
-					accountId = Integer.valueOf(portions[3]);
-				} catch (NumberFormatException nfe) {
-					return;
-				}
-			}
-		case 3:
-			if (portions[2].equals("accounts")) break;
-		default:
-			return;
-		}
-		
+		res.setStatus(res.SC_NOT_FOUND);	// Presume failure
 		try {
 			Account account = new Account();
 			Row row = account.getRow();
 			if (!JSONTools.receiveJSON(req, row)) return;
-			accountId = (Integer)row.get("account_id");
-			AccountUsers account_users = new AccountUsers();
-			
-			HttpSession session = req.getSession(false);
-			if (session == null) {
-				JSONTools.securityBreach(req, res);
-				return;
-			}
-			Roles role = (Roles)session.getAttribute("role");
-			if (role !=  Roles.administrator &&
-					!account_users.accountOwner(accountId,
-							(Integer)session.getAttribute("user_id"))) {
-				JSONTools.securityBreach(req, res);
-				return;
-			}
-
-			JSONTools.dispenseJSON(res, accountId != null
+			Integer accountId = (Integer)row.get("account_id");
+			String[] action = Permissions.granted(req, accountId.intValue());
+			if (action == null) { JSONTools.securityBreach(req, res); return; }
+			Object o;
+			switch (action[0])
+			JSONTools.dispenseJSON(res, accountId == null ? account.readAll()
 					? account.readOne(accountId.intValue())
 					: status != null ? account.readSome("status",status)
 									 : account.readAll());
-			res.setStatus(200);
-		} catch (SQLException ex) {
-	    	// handle any exception
-	    	System.err.println("SQLException: " + ex.getMessage());
-	    	System.err.println("SQLState: " + ex.getSQLState());
-	    	System.err.println("VendorError: " + ex.getErrorCode());
-			ex.printStackTrace();
-			res.setStatus(500);
-			return;
-		}
-	}
-	
-	protected void doPut(HttpServletRequest req, HttpServletResponse res)
-			throws ServletException, IOException {
-		res.setContentType("application/json");
-		res.setStatus(400);	// Presume failure
-		final String URI = req.getRequestURI();
-		String[] portions = URI.split("/");
-		Integer accountId = null;
-		Integer userId = null;
-		switch (portions.length) {
-		case 3:
-			if (portions[2].equals("accounts")) break;
-		default:
-			return;
-		}
-		
-		try {
-			Account account = new Account();
-			Row row = account.getRow();
-			if (!JSONTools.receiveJSON(req, row)) return;
-			accountId = (Integer)row.get("account_id");
-			AccountUsers account_users = new AccountUsers();
-			
-			HttpSession session = req.getSession(false);
-			if (session == null) {
-				JSONTools.securityBreach(req, res);
-				return;
-			}
-			Roles role = (Roles)session.getAttribute("role");
-			if (role !=  Roles.administrator &&
-					!account_users.accountOwner(accountId,
-							(Integer)session.getAttribute("user_id"))) {
-				JSONTools.securityBreach(req, res);
-				return;
-			}
-			
-			account.update(row);
 			res.setStatus(200);
 		} catch (SQLException ex) {
 	    	// handle any exception
@@ -204,6 +132,54 @@ public class AccountServlet extends HttpServlet {
 	    	System.err.println("VendorError: " + ex.getErrorCode());
 			ex.printStackTrace();
 			res.setStatus(500);
+		}
+	}
+	
+	protected void doPut(HttpServletRequest req, HttpServletResponse res)
+			throws ServletException, IOException {
+		res.setContentType("application/json");
+		res.setStatus(400);	// Presume failure
+		final String URI = req.getRequestURI();
+		String[] portions = URI.split("/");
+		Integer accountId = null;
+		Integer userId = null;
+		switch (portions.length) {
+		case 3:
+			if (portions[2].equals("accounts")) break;
+		default:
+			return;
+		}
+		
+		try {
+			Account account = new Account();
+			Row row = account.getRow();
+			if (!JSONTools.receiveJSON(req, row)) return;
+			accountId = (Integer)row.get("account_id");
+			AccountUsers account_users = new AccountUsers();
+			
+			HttpSession session = req.getSession(false);
+			if (session == null) {
+				JSONTools.securityBreach(req, res);
+				return;
+			}
+			Roles role = (Roles)session.getAttribute("role");
+			if (role !=  Roles.administrator &&
+					!account_users.accountOwner(accountId,
+							(Integer)session.getAttribute("user_id"))) {
+				JSONTools.securityBreach(req, res);
+				return;
+			}
+			
+			account.update(row);
+			res.setStatus(200);
+		} catch (SQLException ex) {
+	    	// handle any exception
+	    	System.err.println("SQLException: " + ex.getMessage());
+	    	System.err.println("SQLState: " + ex.getSQLState());
+	    	System.err.println("VendorError: " + ex.getErrorCode());
+			ex.printStackTrace();
+			res.setStatus(500);
+			return;
 		}
 	}
 }

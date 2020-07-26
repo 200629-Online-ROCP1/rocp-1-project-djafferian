@@ -36,7 +36,8 @@ public abstract class Table implements DBContext {
 	private static final String sqlSelectColumnNames =
 			"SELECT column_name, data_type, udt_name "+
 			"FROM information_schema.columns "+
-			"WHERE table_name = ?";
+			"WHERE table_name = ? "+
+			"ORDER BY ordinal_position";
 	private static final String packageName = Table.class.getPackageName();
 	
 	private final String tableName;
