@@ -85,7 +85,11 @@ public final class JSONTools {
 				continue;
 			} else if (o instanceof Enum) {
 				if (!value.isString()) return false;
-				row.put(name, value.asString());
+				for (Object e : o.getClass().getEnumConstants())
+					if (((Enum)e).name().equals(value.asString())) {
+						row.put(name, e);
+						break;
+					}
 				continue;
 			} else return false;
 		}

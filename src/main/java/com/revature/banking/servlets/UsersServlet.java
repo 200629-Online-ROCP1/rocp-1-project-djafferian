@@ -66,7 +66,7 @@ public class UsersServlet extends HttpServlet {
 			case "login":
 				JsonObject credentials = reqBody.asObject();
 				ArrayList<Row> rows = users.readSome("username",
-						credentials.get("username"));
+						credentials.getString("username",""));
 				// The "username" column is supposed to have the unique
 				// constraint, so there should only be one row returned.
 				if (1 < rows.size()) {
@@ -75,7 +75,7 @@ public class UsersServlet extends HttpServlet {
 				}
 				if (1 == rows.size()) {
 					row = rows.get(0);
-					if (credentials.get("password").equals(row.get("password"))) {
+					if (credentials.getString("password","").equals(row.get("password"))) {
 						req.getSession().setAttribute("user_id", row.get("user_id"));
 						JSONTools.dispenseJSON(res, row);
 						res.setStatus(res.SC_OK);

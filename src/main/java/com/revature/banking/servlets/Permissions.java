@@ -46,7 +46,7 @@ public class Permissions {
 	
 	public static String[] granted (HttpServletRequest req, JsonValue reqBody)
 			throws SQLException, ServletException {
-		String sp = req.getServletPath();
+		String sp = req.getServletPath()+req.getPathInfo();
 		String[] groups = null;
 		for (Pattern pattern : URIpatterns) {
 			Matcher matcher = pattern.matcher(sp);
@@ -86,6 +86,7 @@ public class Permissions {
 		case "POST":
 			switch (groups[0]) {
 			case "accounts": return groups;
+			}
 		}
 		
 		int account_id = 0;
