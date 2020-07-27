@@ -84,7 +84,8 @@ public class Permissions {
 		case "GET":
 			return groups;
 		case "POST":
-			if (groups[0].equals("accounts")) return groups;
+			switch (groups[0]) {
+			case "accounts": return groups;
 		}
 		
 		int account_id = 0;
@@ -102,6 +103,9 @@ public class Permissions {
 			break;
 		case "POST":
 			switch (groups[0]) {
+			case "accounts":
+				groups[1] = userId.toString();
+				return groups;
 			case "accounts/deposit":
 			case "accounts/withdraw":
 				account_id = reqBody.asObject().get("accountId").asInt();

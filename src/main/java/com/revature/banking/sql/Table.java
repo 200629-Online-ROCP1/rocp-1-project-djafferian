@@ -246,7 +246,13 @@ public abstract class Table implements DBContext {
 		sql.append(strColumnNameList);	// Optional
 		sql.append(" VALUES ");
 		sql.append(strPlaceHolders);
-		// Avoid exceptions, and ask for the primary key of the new row.
+		/**
+		 * Avoid exceptions, and ask for the primary key of the new row.
+		 * Postgres has an option "RETURNING *" which returns the entire row,
+		 * which would be preferred for our purposes, but MySQL has nothing
+		 * as simple.  So we will be content to execute a second statement
+		 * to get what we prefer.
+		 */
 		sql.append(" ON CONFLICT DO NOTHING RETURNING ");
 		sql.append(primaryKey);
 		sql.append(";");

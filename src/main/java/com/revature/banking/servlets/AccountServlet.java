@@ -1,6 +1,7 @@
 package com.revature.banking.servlets;
 
 import com.eclipsesource.json.Json;
+import com.eclipsesource.json.JsonObject;
 import com.eclipsesource.json.JsonValue;
 import com.revature.banking.sql.Account;
 import com.revature.banking.sql.AccountUsers;
@@ -75,64 +76,86 @@ public class AccountServlet extends HttpServlet {
 			String[] action = Permissions.granted(req, reqBody);
 			if (action == null) { JSONTools.securityBreach(req, res); return; }
 			Account account = new Account();
-			if (portions[2].equals("accounts")) {
-				Row row = account.getRow();
-				if (JSONTools.receiveJSON(req, row)) {
-					row.put("account_id",0);	// Necessary ?
-					int account_id = account.create(row);
-					if (0 < account_id) {
-						JSONTools.dispenseJSON(res, account.readOne(account_id));
-						res.setStatus(201);
-						return;
-					}
+			Row row = account.getRow();
+			JsonObject txn;
+			int account_id;
+			double amount, balance;
+			switch (action[0]) {
+			case "accounts":
+				if (!JSONTools.convertJsonObjectToRow(reqBody, row)) {
+					res.setStatus(res.SC_BAD_REQUEST);
+					return;
 				}
-			} else if (portions[2].equals("transfer")) {
-				Map<String,Object> txn = new HashMap<String,Object>();
-				txn.put("sourceAccountId", Integer.valueOf(0));
-				txn.put("targetAccountId", Integer.valueOf(0));
-				txn.put("amount", Double.valueOf(0));
-				if (!JSONTools.receiveJSON(req, txn)) return;
-				Double amount = (Double)txn.get("amount");
-				if (amount <= 0) return;
-				Row sourceRow = account.readOne((Integer)txn.get("sourceAccountId"));
-				Row targetRow = account.readOne((Integer)txn.get("targetAccountId"));
-				Double sourceBalance = (Double)sourceRow.get("balance");
-				Double targetBalance = (Double)targetRow.get("balance");
-				if (sourceBalance < amount) return;
-				sourceRow.put("balance", sourceBalance-amount);
-				targetRow.put("balance", targetBalance+amount);
-				account.update(sourceRow);
-				account.update(targetRow);
+				account_id = account.create(row);
+				if (0 == account_id) {
+					res.setStatus(res.SC_INTERNAL_SERVER_ERROR);
+					return;
+				}
+				AccountUsers au = new AccountUsers();
+				row = au.getRow();
+				row.get("user_id", Integer.valueOf(action[1]));
+				row.get("account_id", account_id);
+				au.create(row);
+				JSONTools.dispenseJSON(res, account.readOne(account_id));
+				res.setStatus(res.SC_CREATED);
+				return;
+			case "deposit":
+				txn = reqBody.asObject();
+				account_id = txn.getInt("accountId", 0);
+				amount = txn.getDouble("amount", Double.NaN);
+				if (amount <= 0 || Double.valueOf(amount).isNaN()) {
+					res.setStatus(res.SC_BAD_REQUEST);
+					return;
+				}
+				row = account.readOne(account_id);
+				balance = ((Double)row.get("balance")).doubleValue();
+				row.put("balance", Double.valueOf(balance + amount));
+				account.update(row);
 				JSONTools.dispenseJSONMessage(res, "$"+amount+
-						" has been transferred to Account #"+
+						" has been deposited to Account #"+account_id);
+				break;
+			case "withdraw":
+				txn = reqBody.asObject();
+				account_id = txn.getInt("accountId", 0);
+				amount = txn.getDouble("amount", Double.NaN);
+				row = account.readOne(account_id);
+				balance = ((Double)row.get("balance")).doubleValue();
+				if (amount <= 0 || balance < amount ||
+						Double.valueOf(amount).isNaN()) {
+					res.setStatus(res.SC_BAD_REQUEST);
+					return;
+				}
+				row.put("balance", Double.valueOf(balance - amount));
+				account.update(row);
+				JSONTools.dispenseJSONMessage(res, "$"+amount+
+						" has been withdrawn from Account #"+account_id);
+				break;
+			case "transfer" :
+				txn = reqBody.asObject();
+				account_id = txn.getInt("sourceAccountId", 0);
+				amount = txn.getDouble("amount", Double.NaN);
+				row = account.readOne(account_id);
+				balance = ((Double)row.get("balance")).doubleValue();
+				if (amount <= 0 || balance < amount ||
+						Double.valueOf(amount).isNaN()) {
+					res.setStatus(res.SC_BAD_REQUEST);
+					return;
+				}
+				row.put("balance", Double.valueOf(balance - amount));
+				account.update(row);
+
+				account_id = txn.getInt("targetAccountId", 0);
+				row = account.readOne(account_id);
+				balance = ((Double)row.get("balance")).doubleValue();
+				row.put("balance", Double.valueOf(balance + amount));
+				account.update(row);
+
+				JSONTools.dispenseJSONMessage(res, "$"+amount+
+						" has been transferred from Account #"+
 						txn.get("sourceAccountId")+" to Account #"+
 						txn.get("targetAccountId"));
-				res.setStatus(200);
-			} else {
-				Map<String,Object> txn = new HashMap<String,Object>();
-				txn.put("accountId", Integer.valueOf(0));
-				txn.put("amount", Double.valueOf(0));
-				if (!JSONTools.receiveJSON(req, txn)) return;
-				Double amount = (Double)txn.get("amount");
-				if (amount <= 0) return;
-				Row row = account.readOne((Integer)txn.get("accountId"));
-				Double balance = (Double)row.get("balance");
-				String verb;
-				if (portions[2].equals("deposit")) {
-					balance += amount;
-					verb = "deposited to";
-				} else if (portions[2].equals("withdraw")) {
-					if (balance < amount) return;
-					balance -= amount;
-					verb = "withdrawn from";
-				} else return;
-				row.put("balance", balance);
-				account.update(row);
-				res.getWriter().print(
-						"{\"message\": \"$"+amount+" has been "+
-						verb+" Account #"+txn.get("accountId")+"\"}");
-				res.setStatus(200);
 			}
+			res.setStatus(res.SC_OK);
 		} catch (SQLException ex) {
 			handleSQLException (ex, res);
 		}
@@ -143,42 +166,24 @@ public class AccountServlet extends HttpServlet {
 			throws ServletException, IOException {
 		reqBody = Json.parse((Reader)req.getReader());
 		res.setContentType("application/json");
-		res.setStatus(400);	// Presume failure
-		final String URI = req.getRequestURI();
-		String[] portions = URI.split("/");
-		Integer accountId = null;
-		Integer userId = null;
-		switch (portions.length) {
-		case 3:
-			if (portions[2].equals("accounts")) break;
-		default:
-			return;
-		}
-		
+		res.setStatus(res.SC_NOT_FOUND);	// Presume failure
 		try {
 			Account account = new Account();
 			Row row = account.getRow();
-			if (!JSONTools.receiveJSON(req, row)) return;
-			accountId = (Integer)row.get("account_id");
-			AccountUsers account_users = new AccountUsers();
-			
-			HttpSession session = req.getSession(false);
-			if (session == null) {
-				JSONTools.securityBreach(req, res);
+			if (!JSONTools.convertJsonObjectToRow(reqBody, row)) {
+				res.setStatus(res.SC_BAD_REQUEST);
 				return;
 			}
-			Roles role = (Roles)session.getAttribute("role");
-			if (role !=  Roles.administrator &&
-					!account_users.accountOwner(accountId,
-							(Integer)session.getAttribute("user_id"))) {
-				JSONTools.securityBreach(req, res);
+			int account_id = ((Integer)row.get("account_id")).intValue();
+			if (0 == account_id) {
+				res.setStatus(res.SC_INTERNAL_SERVER_ERROR);
 				return;
 			}
-			
 			account.update(row);
-			res.setStatus(200);
+			JSONTools.dispenseJSON(res, account.readOne(account_id));
 		} catch (SQLException ex) {
 			handleSQLException (ex, res);
 		}
+		res.setStatus(res.SC_OK);
 	}
 }
