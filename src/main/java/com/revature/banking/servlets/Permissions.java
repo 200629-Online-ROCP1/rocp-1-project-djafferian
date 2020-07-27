@@ -8,6 +8,7 @@ import javax.servlet.ServletException;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpSession;
 
+import com.eclipsesource.json.JsonValue;
 import com.revature.banking.sql.AccountUsers;
 import com.revature.banking.sql.Roles;
 import com.revature.banking.sql.Row;
@@ -43,9 +44,7 @@ public class Permissions {
 	private static Permissions instance = new Permissions();
 	public static Permissions getInstance() { return instance; }
 	
-	public static String[] granted (HttpServletRequest req)
-			throws SQLException, ServletException { return granted(req, null); }
-	public static String[] granted (HttpServletRequest req, String idString)
+	public static String[] granted (HttpServletRequest req, JsonValue reqBody)
 			throws SQLException, ServletException {
 		String sp = req.getServletPath();
 		String[] groups = null;
@@ -64,17 +63,20 @@ public class Permissions {
 		HttpSession session = req.getSession(false);
 		// Before any action a session must already exist,
 		// except "login" for which there must be no session.
-		if (groups[0].equals("login")) {
-			if (session != null) groups[0] = "logout";
-			return groups;
+		switch (groups[0]) {
+		case "login":
+			if (session == null) return groups;
+			groups[0] = "logout";
+		case "logout":
+			return session == null ? null : groups;
 		}
 		if (session == null) return null;
+		
 		Integer userId = (Integer)session.getAttribute("user_id");
 		int user_id = userId.intValue();
 		Users users = new Users();
 		Row row = users.readOne(user_id);
 		if (row == null) return null;
-
 		Roles role = (Roles)row.get("role");		
 		if (role == Roles.administrator) return groups;
 		String method = req.getMethod();
@@ -84,113 +86,41 @@ public class Permissions {
 		case "POST":
 			if (groups[0].equals("accounts")) return groups;
 		}
-		// if the account user is the user logged in
-		AccountUsers au = new AccountUsers();
+		
+		int account_id = 0;
 		switch (method) {
 		case "GET":
-			switch (groups[0]) {
-			case "users":
+			if (groups.length == 2) switch (groups[0]) {
 			case "accounts/owner":
+			case "users":
 				if (Integer.valueOf(groups[1]) == userId) return groups;
 				break;
 			case "accounts":
-				if (au.accountOwner(Integer.valueOf(groups[1]), user_id)) return groups;
+				account_id = Integer.valueOf(groups[1]);
 				break;
 			}
 			break;
 		case "POST":
 			switch (groups[0]) {
 			case "accounts/deposit":
-			case "accounts/transfer":
 			case "accounts/withdraw":
-				if (au.accountOwner(Integer.valueOf(idString), user_id)) return groups;
+				account_id = reqBody.asObject().get("accountId").asInt();
 				break;
-			case "logout":
-				return groups;
+			case "accounts/transfer":
+				account_id = reqBody.asObject().get("sourceAccountId").asInt();
+				break;
 			}
 			break;
 		case "PUT":
 			switch (groups[0]) {
 			case "users":
-				if (Integer.valueOf(idString) == userId) return groups;
-			}
-		
-		
-		
-				(method == "GET" ||
-				(method == "POST" && groups[0] == "accounts"))) return groups;
-		if (method == "GET" && (groups[0] == "users" || 
-								groups[0] == "accounts/owner")) &&
-			groups.length == 2 && Integer.valueOf(groups[1]) == userId) &&
-		case "GET":
-			switch (groups[0]) {
-			case "users":
-			case "accounts/owner":
-				return groups;
-			}
-			break;
-		case "POST":
-			switch (groups[0]) {
-			case "accounts":
-				return groups;
-			}
-			break;
-		case "PUT":
-			case "users":
-				if (Integer.valueOf(groups[1]) == userId) return groups;
-			case "account":
-				AccountUsers au = new AccountUsers();
-				if (au.accountOwner(account_id, user_id)) switch (method) {
-			}
-			break;
-		case "POST":
-			switch (groups[0]) {
-			case "accounts":
-			case "logout":
-				return groups;
+				if (userId == reqBody.asObject().get("user_id").asInt()) return groups;
+				break;
 			}
 		}
-		if (groups.length < 2) return null;
-		
-		if (Integer.valueOf(groups[1]) == userId) switch(method) {
-		case "GET":
-			switch (groups[0]) {
-			case "accounts/owner":
-			case "users":
-				return groups;
-			}
-			break;
-		case "POST":
-			switch (groups[0]) {
-			case "logout":
-			case "users":
-				return groups;
-			}
-			break;
-		}
+		if (account_id == 0) return null;
 		AccountUsers au = new AccountUsers();
-		if (au.accountOwner(account_id, user_id)) switch (method) {
-		case "GET":
-			switch (groups[0]) {
-			case "accounts":
-				return groups;
-			}
-			break;
-		case "POST":
-			switch (groups[0]) {
-			case "accounts/deposit":
-			case "accounts/transfer":
-			case "accounts/withdraw":
-				return groups;
-			}
-			break;
-		case "PUT":
-			switch(groups[0]) {
-			case "users":
-				return groups;
-			}
-			break;
-		}
+		if (au.accountOwner(account_id, user_id)) return groups;
 		return null;
 	}
 }

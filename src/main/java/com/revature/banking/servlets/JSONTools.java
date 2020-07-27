@@ -40,44 +40,52 @@ public final class JSONTools {
 		res.setStatus(res.SC_UNAUTHORIZED);
 	}
 	
-	public static boolean receiveJSON (HttpServletRequest req, Map<String,Object> map)
-			throws IOException {
-		JsonValue jsonRow = Json.parse((Reader)req.getReader());
-		if (!jsonRow.isObject()) return false;
-		JsonObject jsonFields = jsonRow.asObject();
-		if (jsonFields.size() != map.size()) return false;
-		for (Member field : jsonFields) {
+	/**
+	 * The members of JSON objects are not ordered, while the Row class used
+	 * with databases are ordered.  This method ensures that the JsonValues
+	 * from the former are converted to Java Objects in the latter, while
+	 * maintaining order and inclusion.
+	 * 
+	 * @param jo
+	 * @param row
+	 * @return true if the conversion completes, false if the conversion fails.
+	 */
+	public static boolean convertJsonObjectToRow (JsonValue jv, Row row) {
+		if (!jv.isObject()) return false;
+		JsonObject jo = jv.asObject();
+		if (jo.size() != row.size()) return false;
+		for (Member field : jo) {
 			String name = field.getName();
 			JsonValue value = field.getValue();
-			Object o = map.get(name);
+			Object o = row.get(name);
 			if (o == null || value.isNull()) return false;
 			if (o instanceof String) {
 				if (!value.isString()) return false;
-				map.put(name, value.asString());
+				row.put(name, value.asString());
 				continue;
 			} else if (o instanceof Integer) {
 				if (!value.isNumber()) return false;
-				map.put(name, value.asInt());
+				row.put(name, value.asInt());
 				continue;
 			} else if (o instanceof Long) {
 				if (!value.isNumber()) return false;
-				map.put(name, value.asLong());
+				row.put(name, value.asLong());
 				continue;
 			} else if (o instanceof Float) {
 				if (!value.isNumber()) return false;
-				map.put(name, value.asFloat());
+				row.put(name, value.asFloat());
 				continue;
 			} else if (o instanceof Double) {
 				if (!value.isNumber()) return false;
-				map.put(name, value.asDouble());
+				row.put(name, value.asDouble());
 				continue;
 			} else if (o instanceof Boolean) {
 				if (!value.isBoolean()) return false;
-				map.put(name, value.asBoolean());
+				row.put(name, value.asBoolean());
 				continue;
 			} else if (o instanceof Enum) {
 				if (!value.isString()) return false;
-				map.put(name, value.asString());
+				row.put(name, value.asString());
 				continue;
 			} else return false;
 		}

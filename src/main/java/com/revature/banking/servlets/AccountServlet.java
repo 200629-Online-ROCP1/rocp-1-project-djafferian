@@ -1,5 +1,7 @@
 package com.revature.banking.servlets;
 
+import com.eclipsesource.json.Json;
+import com.eclipsesource.json.JsonValue;
 import com.revature.banking.sql.Account;
 import com.revature.banking.sql.AccountUsers;
 import com.revature.banking.sql.Roles;
@@ -8,6 +10,7 @@ import com.revature.banking.sql.Statuses;
 import com.revature.banking.sql.Users;
 
 import java.io.IOException;
+import java.io.Reader;
 import java.sql.SQLException;
 import java.util.HashMap;
 import java.util.Map;
@@ -19,6 +22,7 @@ import javax.servlet.http.HttpServletResponse;
 import javax.servlet.http.HttpSession;
 
 public class AccountServlet extends HttpServlet {
+	JsonValue reqBody;	// Not used for requests with no body.
 
 	@SuppressWarnings("static-access")
 	private void handleSQLException (SQLException ex, HttpServletResponse res) {
@@ -29,43 +33,47 @@ public class AccountServlet extends HttpServlet {
 		res.setStatus(res.SC_INTERNAL_SERVER_ERROR);
 	}
 
+	@SuppressWarnings("static-access")
 	protected void doGet(HttpServletRequest req, HttpServletResponse res)
 			throws ServletException, IOException {
+		// A GET request does not have request body.
 		res.setContentType("application/json");
 		res.setStatus(res.SC_NOT_FOUND);	// Presume failure
 		try {
+			String[] action = Permissions.granted(req, reqBody);
+			if (action == null) { JSONTools.securityBreach(req, res); return; }
 			Account account = new Account();
 			Row row = account.getRow();
-			if (!JSONTools.receiveJSON(req, row)) return;
-			Integer accountId = (Integer)row.get("account_id");
-			String[] action = Permissions.granted(req, accountId.intValue());
-			if (action == null) { JSONTools.securityBreach(req, res); return; }
-			Object o;
-			switch (action[0])
-			JSONTools.dispenseJSON(res, accountId == null ? account.readAll()
-					? account.readOne(accountId.intValue())
-					: status != null ? account.readSome("status",status)
-									 : account.readAll());
-			res.setStatus(200);
+			if (!JSONTools.convertJsonObjectToRow(reqBody, row)) {
+				res.setStatus(res.SC_BAD_REQUEST);
+				return;
+			}
+			Object obj = null;
+			switch (action[0]) {
+			case "accounts":
+				obj = 1 == action.length ? account.readAll() :
+					account.readOne(Integer.parseUnsignedInt(action[1]));
+				break;
+			case "accounts/status":
+				obj = account.readSome("status", action[1]);
+				break;
+			}
+			JSONTools.dispenseJSON(res, obj);
+			res.setStatus(res.SC_OK);
 		} catch (SQLException ex) {
-	    	// handle any exception
-	    	System.err.println("SQLException: " + ex.getMessage());
-	    	System.err.println("SQLState: " + ex.getSQLState());
-	    	System.err.println("VendorError: " + ex.getErrorCode());
-			ex.printStackTrace();
-			res.setStatus(500);
-			return;
+			handleSQLException (ex, res);
 		}
 	}
 	
+	@SuppressWarnings("static-access")
 	protected void doPost(HttpServletRequest req, HttpServletResponse res)
 			throws ServletException, IOException {
+		reqBody = Json.parse((Reader)req.getReader());
 		res.setContentType("application/json");
-		res.setStatus(400);	// Presume failure
-		final String URI = req.getRequestURI();
-		String[] portions = URI.split("/");
-		if (portions.length != 3) return;
+		res.setStatus(res.SC_NOT_FOUND);	// Presume failure
 		try {
+			String[] action = Permissions.granted(req, reqBody);
+			if (action == null) { JSONTools.securityBreach(req, res); return; }
 			Account account = new Account();
 			if (portions[2].equals("accounts")) {
 				Row row = account.getRow();
@@ -126,17 +134,14 @@ public class AccountServlet extends HttpServlet {
 				res.setStatus(200);
 			}
 		} catch (SQLException ex) {
-	    	// handle any exception
-	    	System.err.println("SQLException: " + ex.getMessage());
-	    	System.err.println("SQLState: " + ex.getSQLState());
-	    	System.err.println("VendorError: " + ex.getErrorCode());
-			ex.printStackTrace();
-			res.setStatus(500);
+			handleSQLException (ex, res);
 		}
 	}
 	
+	@SuppressWarnings("static-access")
 	protected void doPut(HttpServletRequest req, HttpServletResponse res)
 			throws ServletException, IOException {
+		reqBody = Json.parse((Reader)req.getReader());
 		res.setContentType("application/json");
 		res.setStatus(400);	// Presume failure
 		final String URI = req.getRequestURI();
@@ -173,13 +178,7 @@ public class AccountServlet extends HttpServlet {
 			account.update(row);
 			res.setStatus(200);
 		} catch (SQLException ex) {
-	    	// handle any exception
-	    	System.err.println("SQLException: " + ex.getMessage());
-	    	System.err.println("SQLState: " + ex.getSQLState());
-	    	System.err.println("VendorError: " + ex.getErrorCode());
-			ex.printStackTrace();
-			res.setStatus(500);
-			return;
+			handleSQLException (ex, res);
 		}
 	}
 }
