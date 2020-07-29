@@ -3,18 +3,17 @@ package com.revature.banking.servlets;
 import com.eclipsesource.json.Json;
 import com.eclipsesource.json.JsonObject;
 import com.eclipsesource.json.JsonValue;
+import com.eclipsesource.json.ParseException;
 import com.revature.banking.sql.Account;
 import com.revature.banking.sql.AccountUsers;
 import com.revature.banking.sql.Roles;
 import com.revature.banking.sql.Row;
-import com.revature.banking.sql.Statuses;
 import com.revature.banking.sql.Users;
 
 import java.io.IOException;
 import java.io.Reader;
 import java.sql.SQLException;
-import java.util.HashMap;
-import java.util.Map;
+import java.util.regex.Pattern;
 
 import javax.servlet.ServletException;
 import javax.servlet.http.HttpServlet;
@@ -22,34 +21,89 @@ import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import javax.servlet.http.HttpSession;
 
-public class AccountServlet extends HttpServlet {
-	JsonValue reqBody;	// Not used for requests with no body.
+public class AccountServlet extends HelperServlet {
 
-	@SuppressWarnings("static-access")
-	private void handleSQLException (SQLException ex, HttpServletResponse res) {
-    	System.err.println("SQLException: " + ex.getMessage());
-    	System.err.println("SQLState: " + ex.getSQLState());
-    	System.err.println("VendorError: " + ex.getErrorCode());
-		ex.printStackTrace();
-		res.setStatus(res.SC_INTERNAL_SERVER_ERROR);
+	private static String[] URIpatternStrings = {
+			"^/(accounts)$",
+			"^/(accounts/deposit)$",
+			"^/(accounts/owner)/([1-9][0-9]*)$",
+			"^/(accounts/status)/([^/]+)$",
+			"^/(accounts/transfer)$",
+			"^/(accounts/withdraw)$",
+			"^/(accounts)/([1-9][0-9]*)$"
+	};
+	
+	public AccountServlet () {
+		super(URIpatternStrings);
 	}
+	
+	public boolean authorized (HttpServletRequest req, String[] action)
+			throws SQLException, IOException {
 
+		if (req.getSession(false) == null) return false;
+		Row row = getSessionUser(req);
+		
+		Roles role = (Roles)row.get("role");		
+		if (role == null) return false;
+		if (role == Roles.administrator) return true;
+		String method = req.getMethod();
+		if (role == Roles.employee) switch (method) {
+		case "GET":
+			return true;
+		case "POST":
+			if (action.length == 1) return true;
+		}
+
+		int user_id = ((Integer)row.get("user_id")).intValue();
+		AccountUsers au = new AccountUsers();
+		switch (action[0]) {
+		case "accounts":
+			switch (method) {
+			case "GET":
+				if (action.length == 1) return false;
+				return au.accountOwner(Integer.parseInt(action[1]), user_id);
+			case "POST":
+				return true;
+			}
+		case "accounts/owner":
+			switch (method) {
+			case "GET":
+				if (action.length == 1) return false;
+				return Integer.parseInt(action[1]) == user_id;	
+			}
+		}
+		
+		JsonValue reqBody = getRequestBody(req);		
+		if (reqBody == null) return false;
+		int account_id = 0;
+		switch (action[0]) {
+		case "accounts/deposit":
+		case "accounts/withdraw":
+			account_id = reqBody.asObject().get("accountId").asInt();
+			break;
+		case "accounts/transfer":
+			account_id = reqBody.asObject().get("sourceAccountId").asInt();
+		}
+		if (account_id == 0) return false;
+		return au.accountOwner(account_id, user_id);
+	}
+		
 	@SuppressWarnings("static-access")
 	protected void doGet(HttpServletRequest req, HttpServletResponse res)
 			throws ServletException, IOException {
-		// A GET request does not have request body.
+
 		res.setContentType("application/json");
 		res.setStatus(res.SC_NOT_FOUND);	// Presume failure
+		String[] action = getPathArguments(req);
+		if (action == null) return;
+
 		try {
-			String[] action = Permissions.granted(req, reqBody);
-			if (action == null) { JSONTools.securityBreach(req, res); return; }
-			Account account = new Account();
-			Row row = account.getRow();
-			if (!JSONTools.convertJsonObjectToRow(reqBody, row)) {
-				res.setStatus(res.SC_BAD_REQUEST);
+			if (!authorized(req, action)) {
+				JSONTools.securityBreach(req, res);
 				return;
 			}
-			Object obj = null;
+			Account account = new Account();
+			Object obj = null;	// Could be Row, or ArrayList<Row>
 			switch (action[0]) {
 			case "accounts":
 				obj = 1 == action.length ? account.readAll() :
@@ -69,12 +123,18 @@ public class AccountServlet extends HttpServlet {
 	@SuppressWarnings("static-access")
 	protected void doPost(HttpServletRequest req, HttpServletResponse res)
 			throws ServletException, IOException {
-		reqBody = Json.parse((Reader)req.getReader());
+		
+		resetRequestBody();
 		res.setContentType("application/json");
 		res.setStatus(res.SC_NOT_FOUND);	// Presume failure
+		String[] action = getPathArguments(req);
+		if (action == null) return;
+
 		try {
-			String[] action = Permissions.granted(req, reqBody);
-			if (action == null) { JSONTools.securityBreach(req, res); return; }
+			if (!authorized(req, action)) {
+				JSONTools.securityBreach(req, res);
+				return;
+			}
 			Account account = new Account();
 			Row row = account.getRow();
 			JsonObject txn;
@@ -82,7 +142,7 @@ public class AccountServlet extends HttpServlet {
 			double amount, balance;
 			switch (action[0]) {
 			case "accounts":
-				if (!JSONTools.convertJsonObjectToRow(reqBody, row)) {
+				if (!JSONTools.convertJsonObjectToRow(getRequestBody(req), row)) {
 					res.setStatus(res.SC_BAD_REQUEST);
 					return;
 				}
@@ -91,16 +151,18 @@ public class AccountServlet extends HttpServlet {
 					res.setStatus(res.SC_INTERNAL_SERVER_ERROR);
 					return;
 				}
+				HttpSession session = req.getSession(false);
+				Integer userId = (Integer)session.getAttribute("user_id");
 				AccountUsers au = new AccountUsers();
 				row = au.getRow();
-				row.get("user_id", Integer.valueOf(action[1]));
-				row.get("account_id", account_id);
+				row.put("user_id", userId);
+				row.put("account_id", Integer.valueOf(account_id));
 				au.create(row);
 				JSONTools.dispenseJSON(res, account.readOne(account_id));
 				res.setStatus(res.SC_CREATED);
 				return;
-			case "deposit":
-				txn = reqBody.asObject();
+			case "accounts/deposit":
+				txn = getRequestBody(req).asObject();
 				account_id = txn.getInt("accountId", 0);
 				amount = txn.getDouble("amount", Double.NaN);
 				if (amount <= 0 || Double.valueOf(amount).isNaN()) {
@@ -113,9 +175,10 @@ public class AccountServlet extends HttpServlet {
 				account.update(row);
 				JSONTools.dispenseJSONMessage(res, "$"+amount+
 						" has been deposited to Account #"+account_id);
-				break;
-			case "withdraw":
-				txn = reqBody.asObject();
+				res.setStatus(res.SC_OK);
+				return;
+			case "accounts/withdraw":
+				txn = getRequestBody(req).asObject();
 				account_id = txn.getInt("accountId", 0);
 				amount = txn.getDouble("amount", Double.NaN);
 				row = account.readOne(account_id);
@@ -129,9 +192,10 @@ public class AccountServlet extends HttpServlet {
 				account.update(row);
 				JSONTools.dispenseJSONMessage(res, "$"+amount+
 						" has been withdrawn from Account #"+account_id);
-				break;
-			case "transfer" :
-				txn = reqBody.asObject();
+				res.setStatus(res.SC_OK);
+				return;
+			case "accounts/transfer" :
+				txn = getRequestBody(req).asObject();
 				account_id = txn.getInt("sourceAccountId", 0);
 				amount = txn.getDouble("amount", Double.NaN);
 				row = account.readOne(account_id);
@@ -154,8 +218,9 @@ public class AccountServlet extends HttpServlet {
 						" has been transferred from Account #"+
 						txn.get("sourceAccountId")+" to Account #"+
 						txn.get("targetAccountId"));
+				res.setStatus(res.SC_OK);
+				return;
 			}
-			res.setStatus(res.SC_OK);
 		} catch (SQLException ex) {
 			handleSQLException (ex, res);
 		}
@@ -164,13 +229,21 @@ public class AccountServlet extends HttpServlet {
 	@SuppressWarnings("static-access")
 	protected void doPut(HttpServletRequest req, HttpServletResponse res)
 			throws ServletException, IOException {
-		reqBody = Json.parse((Reader)req.getReader());
+		
+		resetRequestBody();
 		res.setContentType("application/json");
 		res.setStatus(res.SC_NOT_FOUND);	// Presume failure
+		String[] action = getPathArguments(req);
+		if (action == null) return;
+
 		try {
+			if (!authorized(req, action)) {
+				JSONTools.securityBreach(req, res);
+				return;
+			}
 			Account account = new Account();
 			Row row = account.getRow();
-			if (!JSONTools.convertJsonObjectToRow(reqBody, row)) {
+			if (!JSONTools.convertJsonObjectToRow(getRequestBody(req), row)) {
 				res.setStatus(res.SC_BAD_REQUEST);
 				return;
 			}
@@ -181,9 +254,9 @@ public class AccountServlet extends HttpServlet {
 			}
 			account.update(row);
 			JSONTools.dispenseJSON(res, account.readOne(account_id));
+			res.setStatus(res.SC_OK);
 		} catch (SQLException ex) {
 			handleSQLException (ex, res);
 		}
-		res.setStatus(res.SC_OK);
 	}
 }

@@ -15,6 +15,7 @@ import java.util.Map;
 
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
+import javax.servlet.http.HttpSession;
 
 public final class JSONTools {
 
@@ -35,7 +36,8 @@ public final class JSONTools {
 	}
 	public static void securityBreach(HttpServletRequest req, HttpServletResponse res)
 			throws IOException {
-		req.getSession().invalidate();
+		HttpSession session = req.getSession();
+		session.invalidate();
 		JSONTools.dispenseJSONMessage(res, "The requested action is not permitted");
 		res.setStatus(res.SC_UNAUTHORIZED);
 	}

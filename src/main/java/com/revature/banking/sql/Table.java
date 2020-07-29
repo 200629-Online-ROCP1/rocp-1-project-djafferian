@@ -328,7 +328,7 @@ public abstract class Table implements DBContext {
 		// Replace the last place holder with the primary key, to complete the WHERE clause.
 		ps.setInt(fillInPlaceHolders(ps, row), ((Integer)(row.get(primaryKey))).intValue());
 		// Execute the query.
-		ps.executeUpdate();				
+		ps.executeUpdate();
 	}
 	
 	public void delete (int pk_id) throws SQLException {
