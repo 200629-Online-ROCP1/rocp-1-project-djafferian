@@ -93,5 +93,11 @@ CREATE TABLE banking.account_users (
 	CONSTRAINT account_users_fk_1 FOREIGN KEY (user_id) REFERENCES users(user_id)
 );
 
+CREATE VIEW accounts_users_view AS
+SELECT *
+FROM account_users
+	JOIN users USING (user_id)
+	JOIN account USING (account_id)
+
 INSERT INTO banking.users VALUES (0,'djafferian','password',
 'David','Jafferian','djafferian@gmail.com','administrator');
