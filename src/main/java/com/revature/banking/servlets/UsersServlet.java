@@ -13,6 +13,7 @@ import java.io.IOException;
 import java.io.Reader;
 import java.sql.SQLException;
 import java.util.ArrayList;
+import java.util.Map;
 import java.util.regex.Pattern;
 
 import javax.servlet.ServletException;
@@ -23,96 +24,51 @@ import javax.servlet.http.HttpSession;
 
 public class UsersServlet extends HelperServlet {
 
-	private static String[] URIpatternStrings = {
-			"^/(login)$",
-			"^/(logout)$",
-			"^/(register)$",
-			"^/(users)$",
-			"^/(users)/([1-9][0-9]*)$"
-	};
+	private static String[] GET_URIpatternStrings = {
+			"^/(users)$", "^/(users)/([1-9][0-9]*)$" };
+	private static String[] POST_URIpatternStrings = {
+			"^/(login)$", "^/(logout)$", "^/(register)$" };
+	private static String[] PUT_URIpatternStrings = { "^/(users)$" };
 	
 	public UsersServlet () {
-		super(URIpatternStrings);
+		super(GET_URIpatternStrings, POST_URIpatternStrings, PUT_URIpatternStrings);
 	}
-	
-	public boolean authorized (HttpServletRequest req, String[] action)
-			throws SQLException, IOException {
 
+	private boolean doGetAuthorized (HttpServletRequest req, String[] action)
+			throws SQLException {
 		HttpSession session = req.getSession(false);
-		String method = req.getMethod();
-		switch (action[0]) {
-		case "logout":
-			switch (method) {
-			case "POST":
-				return true;	// "logout" is always authorized.
-			}
-			break;
-		// "login" is authorized when there is no session, while all other
-		// actions are unauthorized without a session.  When there is a
-		// session, "login" is authorized only when the credentials are
-		// those for the session user identified in the session.
-		case "login":
-			switch (method) {
-			case "POST":
-				if (session == null) return true;
-			}
-		}
 		if (session == null) return false;
-		Row row = getSessionUser(req);
-		switch (action[0]) {
-		case "login":
-			switch (method) {
-			case "POST":
-				// If the credentials match those of the session user,
-				// do nothing.  Otherwise, invalidate the session.
-				JsonObject credentials = getRequestBody(req).asObject();
-				return credentials.get("username").asString()
-						.equals(row.get("username"))
-					&& credentials.get("password").asString()
-						.equals(row.get("password"));
-			}
-		}
-		
+		Row row = getSessionUser(session);
+		if (row == null) return false;
 		Roles role = (Roles)row.get("role");
-		if (role == null) return false;
 		if (role == Roles.administrator) return true;
-		if (role == Roles.employee) return method.equals("GET");
-		
-		int user_id = ((Integer)row.get("user_id")).intValue();
+		if (role == Roles.employee) return true;	// because this is a GET
 		switch (action[0]) {
 		case "users":
-			switch (method) {
-			case "GET":
-				return (action.length == 2 &&
-						Integer.parseInt(action[1]) == user_id;
-			case "PUT":
-				JsonValue reqBody = getRequestBody(req);
-				if (reqBody == null) return false;
-				return reqBody.asObject().get("user_id").asInt() == user_id;
-			}
+			int user_id = ((Integer)row.get("user_id")).intValue();
+			return action.length == 2 &&
+					Integer.parseInt(action[1]) == user_id;
 		}
 		return false;
 	}
-
+	
 	@SuppressWarnings("static-access")
 	protected void doGet(HttpServletRequest req, HttpServletResponse res)
 			throws IOException, ServletException {
-
 		res.setContentType("application/json");
 		res.setStatus(res.SC_NOT_FOUND);	// Presume failure
 		String[] action = getPathArguments(req);
 		if (action == null) return;
 		try {
-			if (!authorized(req, action)) {
+			if (doGetAuthorized(req, action)) {
 				JSONTools.securityBreach(req, res);
 				return;
 			}
 			switch (action[0]) {
 			case "users":
 				Users users = new Users();
-				JSONTools.dispenseJSON(res,
-						action.length == 1 ? users.readAll() :
-						users.readOne(Integer.parseUnsignedInt(action[1])));
+				JSONTools.dispenseJSON(res, action.length == 1 ?
+						users.readAll() : users.readOne(user_id));
 				res.setStatus(res.SC_OK);
 			}
 	    } catch (SQLException ex) {
@@ -120,37 +76,63 @@ public class UsersServlet extends HelperServlet {
 		}
 	}
 	
+	private boolean doPostAuthorized (HttpServletRequest req, String[] action)
+			throws SQLException, IOException {
+		HttpSession session = req.getSession(false);
+		Row row;
+		
+		switch (action[0]) {
+		// "login" is authorized when there is no session.  "login" is also
+		// authorized when there is a session and when the credentials are
+		// those for the session user.
+		case "login":
+			if (session == null) return true;
+			row = getSessionUser(session);
+			if (row == null) return false;
+			JsonObject creds = getRequestBody(req).asObject();
+			return creds.get("username").asString().equals(row.get("username"))
+				&& creds.get("password").asString().equals(row.get("password"));
+		case "logout":
+			return true;	// "logout" is always authorized.
+		case "register":
+			if (session == null) return false;
+			row = getSessionUser(session);
+			if (row == null) return false;
+			Roles role = (Roles)row.get("role");
+			if (role == Roles.administrator) return true;
+		}
+		return false;
+	}
+
 	@SuppressWarnings("static-access")
 	protected void doPost(HttpServletRequest req, HttpServletResponse res)
 			throws ServletException, IOException {
-
 		resetRequestBody();
 		res.setContentType("application/json");
 		res.setStatus(res.SC_NOT_FOUND);	// Presume failure
 		String[] action = getPathArguments(req);
 		if (action == null) return;
-
 		try {
-			if (!authorized(req, action)) {
+			if (doPostAuthorized(req, action)) {
 				JSONTools.securityBreach(req, res);
 				return;
 			}
+			HttpSession session = req.getSession(false);
 			Users users = new Users();
-			Row row = getSessionUser(req);
+			Row row;
 			switch (action[0]) {
 			case "login":
-				// At this point, the "authorized" method has already
-				// determined that there is a session and the credentials
-				// in the request body are those of the session user, OR
-				// there is no session and whether the credentials belong
-				// to any user is yet to be determined.
-				if (req.getSession(false) != null) {
+				// At this point, either there is a session and the credentials
+				// in the request body are those of the session user, OR there
+				// is no session and whether the credentials belong to any user
+				// is yet to be determined.
+				if (session != null) {
+					row = getSessionUser(session);
 					JSONTools.dispenseJSON(res, row);
 					res.setStatus(res.SC_OK);
 					return;
 				}
 
-				users = new Users();
 				JsonObject credentials = getRequestBody(req).asObject();
 				ArrayList<Row> rows = users.readSome("username",
 						credentials.get("username").asString());
@@ -162,7 +144,8 @@ public class UsersServlet extends HelperServlet {
 				}
 				if (1 == rows.size()) {
 					row = rows.get(0);
-					if (credentials.get("password").asString().equals(row.get("password"))) {
+					if (credentials.get("password").asString()
+							.equals(row.get("password"))) {
 						req.getSession().setAttribute("user_id", row.get("user_id"));
 						JSONTools.dispenseJSON(res, row);
 						res.setStatus(res.SC_OK);
@@ -173,9 +156,8 @@ public class UsersServlet extends HelperServlet {
 				res.setStatus(res.SC_BAD_REQUEST);
 				return;
 			case "logout":
-				HttpSession session = req.getSession(false);
 				if (session != null) {
-					row = getSessionUser(req);
+					row = getSessionUser(session);
 					session.invalidate();
 					JSONTools.dispenseJSONMessage(res,
 							"You have successfully logged out "+row.get("username"));
@@ -185,8 +167,9 @@ public class UsersServlet extends HelperServlet {
 							"There was no user logged into the session");
 					res.setStatus(res.SC_BAD_REQUEST);				
 				}
-				break;
+				return;
 			case "register":
+				row = users.getRow();
 				if (JSONTools.convertJsonObjectToRow(getRequestBody(req), row)) {
 					row.put("user_id",0);	// Necessary ?
 					int user_id = users.create(row);
@@ -204,7 +187,24 @@ public class UsersServlet extends HelperServlet {
 			handleSQLException (ex, res);
 		}
 	}
-	
+
+	private boolean doPutAuthorized (HttpServletRequest req, String[] action)
+			throws SQLException, IOException {
+		HttpSession session = req.getSession(false);
+		if (session == null) return false;
+		Row row = getSessionUser(session);
+		if (row == null) return false;
+		switch (action[0]) {
+		case "users":
+			Roles role = (Roles)row.get("role");
+			if (role == Roles.administrator) return true;
+			JsonValue reqBody = getRequestBody(req);
+			return reqBody.asObject().get("user_id").asInt() ==
+					((Integer)row.get("user_id")).intValue();
+		}
+		return false;
+	}
+
 	@SuppressWarnings("static-access")
 	protected void doPut(HttpServletRequest req, HttpServletResponse res)
 			throws ServletException, IOException {
@@ -214,12 +214,11 @@ public class UsersServlet extends HelperServlet {
 		res.setStatus(res.SC_NOT_FOUND);	// Presume failure
 		String[] action = getPathArguments(req);
 		if (action == null) return;
-		
 		try {
-			if (!authorized(req, action)) {
+			if (doPostAuthorized(req, action)) {
 				JSONTools.securityBreach(req, res);
 				return;
-			}	
+			}
 			switch (action[0]) {
 			case "users":
 				Users users = new Users();
@@ -230,8 +229,8 @@ public class UsersServlet extends HelperServlet {
 					} catch (SQLException ex) {
 						throw ex;
 					} finally {
-						int user_id = ((Integer)row.get("user_id")).intValue();
-						row = users.readOne(user_id);
+						row = users.readOne(
+								((Integer)row.get("user_id")).intValue());
 						JSONTools.dispenseJSON(res, row);
 						res.setStatus(res.SC_OK);
 					}

@@ -21,27 +21,42 @@ import com.revature.banking.sql.Users;
 
 public abstract class HelperServlet extends HttpServlet {
 	
-	private Pattern[] URIpatterns;
+	private final Pattern[] GET_URIpatterns;
+	private final Pattern[] POST_URIpatterns;
+	private final Pattern[] PUT_URIpatterns;
+	
+	private static Pattern[] convertStringsToPatterns (String[] s) {
+		Pattern[] p = new Pattern[s.length];
+		for (int i=0; i<s.length; i+=1) p[i] = Pattern.compile(s[i]);
+		return p;
+	}
 
-	public HelperServlet(String[] URIpatternStrings) {
-		URIpatterns = new Pattern[URIpatternStrings.length];
-		for (int i=0; i<URIpatternStrings.length; i+=1)
-			URIpatterns[i] = Pattern.compile(URIpatternStrings[i]);
+	public HelperServlet(String[] get, String[] post, String[] put) {
+		GET_URIpatterns = convertStringsToPatterns(get);
+		POST_URIpatterns = convertStringsToPatterns(post);
+		PUT_URIpatterns = convertStringsToPatterns(put);
 	}
 	
-	protected Pattern[] getURIpatterns() { return URIpatterns; }
+	protected Pattern[] getURIpatterns(String method) {
+		switch (method) {
+		case "GET": return GET_URIpatterns;
+		case "POST": return POST_URIpatterns;
+		case "PUT": return PUT_URIpatterns;	
+		}
+		return null;
+	}
 	
 	public String[] getPathArguments (HttpServletRequest req) {
 		String sp = req.getServletPath();
 		String pi = req.getPathInfo();
 		if (pi != null) sp += pi;
 		String[] action = null;
-		for (Pattern pattern : getURIpatterns()) {
+		for (Pattern pattern : getURIpatterns(req.getMethod())) {
 			Matcher matcher = pattern.matcher(sp);
 			if (matcher.find()) {
 				int n = matcher.groupCount();
 				action = new String[n];
-				// matcher.group(0) is the string which matches
+				// matcher.group(0) is the string that matches
 				// the entire pattern; we don't want that.
 				for (int i=0; i<n; i+=1) action[i] = matcher.group(i+1);
 				break;
@@ -51,11 +66,9 @@ public abstract class HelperServlet extends HttpServlet {
 	}
 	
 	// This method gets the row of the "users" table for the session user.
-	protected Row getSessionUser (HttpServletRequest req) throws SQLException {
-		HttpSession session = req.getSession(false);
-		Integer userId = (Integer)session.getAttribute("user_id");
-		int user_id = userId.intValue();
-		Row row;
+	protected Row getSessionUser (HttpSession session) throws SQLException {
+		int user_id = ((Integer)session.getAttribute("user_id")).intValue();
+		Row row = null;
 		try {
 			Users users = new Users();
 			row = users.readOne(user_id);

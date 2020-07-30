@@ -36,9 +36,7 @@ public final class JSONTools {
 	}
 	public static void securityBreach(HttpServletRequest req, HttpServletResponse res)
 			throws IOException {
-		HttpSession session = req.getSession();
-		session.invalidate();
-		JSONTools.dispenseJSONMessage(res, "The requested action is not permitted");
+		JSONTools.dispenseJSONMessage(res, "The requested action is not permitted.");
 		res.setStatus(res.SC_UNAUTHORIZED);
 	}
 	

@@ -1,6 +1,8 @@
 package com.revature.banking.sql;
 
 import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.ArrayList;
 
@@ -19,4 +21,5 @@ public class AccountUsers extends Table implements DBContext {
 			if (rows.get(i).get("account_id") == Integer.valueOf(account_id)) return true;
 		return false;
 	}
+	
 }
