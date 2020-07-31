@@ -55,6 +55,7 @@ public class AccountServlet extends HelperServlet {
 		Account account = new Account();
 		switch (action[0]) {
 		case "accounts":
+			if (action.length == 1) return false;
 			row = account.readOne(Integer.parseInt(action[1]));
 			return ((Integer)row.get("user_id")).intValue() == user_id;
 		case "accounts/owner":

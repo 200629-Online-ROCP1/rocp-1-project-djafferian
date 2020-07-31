@@ -87,12 +87,19 @@ public class UsersServlet extends HelperServlet {
 		// authorized when there is a session and when the credentials are
 		// those for the session user.
 		case "login":
-			if (session == null) return true;
+			if (session == null) return true;	// Free to open a new session.
 			row = getSessionUser(session);
-			if (row == null) return false;
+			// Better a new session than a broken one.
+			if (row == null) return true;
+			// If the session user thought the session
+			// was not still open, do not close it.
 			JsonObject creds = getRequestBody(req).asObject();
-			return creds.get("username").asString().equals(row.get("username"))
-				&& creds.get("password").asString().equals(row.get("password"));
+			if (creds.get("username").asString().equals(row.get("username")) &&
+				creds.get("password").asString().equals(row.get("password")))
+				return true;
+			// If the session user left the session open, close it.
+			action[0] = "logout";
+			// FALLTHRU
 		case "logout":
 			return true;	// "logout" is always authorized.
 		case "register":
@@ -147,7 +154,8 @@ public class UsersServlet extends HelperServlet {
 					row = rows.get(0);
 					if (credentials.get("password").asString()
 							.equals(row.get("password"))) {
-						req.getSession().setAttribute("user_id", row.get("user_id"));
+						req.getSession().setAttribute("user_id",
+								row.get("user_id"));
 						JSONTools.dispenseJSON(res, row);
 						res.setStatus(res.SC_OK);
 						return;
@@ -158,10 +166,14 @@ public class UsersServlet extends HelperServlet {
 				return;
 			case "logout":
 				if (session != null) {
+					String message = "You have successfully logged out";
 					row = getSessionUser(session);
 					session.invalidate();
-					JSONTools.dispenseJSONMessage(res,
-							"You have successfully logged out "+row.get("username"));
+					if (row != null) {
+						String username = row.get("username").toString();
+						if (0 < username.length()) message += " "+username;
+					}
+					JSONTools.dispenseJSONMessage(res, message);
 					res.setStatus(res.SC_OK);
 				} else {
 					JSONTools.dispenseJSONMessage(res,

@@ -81,5 +81,5 @@ CREATE TABLE banking.account (
 	CONSTRAINT account_fk FOREIGN KEY (user_id) REFERENCES banking.users(user_id)
 );
 
-INSERT INTO banking.users VALUES (1,'djafferian','password',
+INSERT INTO banking.users VALUES (DEFAULT,'djafferian','password',
 'David','Jafferian','djafferian@gmail.com','administrator');

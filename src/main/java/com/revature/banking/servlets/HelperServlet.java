@@ -1,6 +1,8 @@
 package com.revature.banking.servlets;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.Reader;
 import java.sql.SQLException;
 import java.util.regex.Matcher;
@@ -15,7 +17,6 @@ import javax.servlet.http.HttpSession;
 import com.eclipsesource.json.Json;
 import com.eclipsesource.json.JsonValue;
 import com.eclipsesource.json.ParseException;
-import com.revature.banking.sql.Roles;
 import com.revature.banking.sql.Row;
 import com.revature.banking.sql.Users;
 
@@ -85,18 +86,18 @@ public abstract class HelperServlet extends HttpServlet {
 	// The resetRequestBody method must be called at the start of
 	// any doXxx method for which a request body may be expected.
 	protected void resetRequestBody() { haveReqBody = 0; }
-
+	
 	// This method should not be called unless the request body is expected to
 	// be valid JSON and the information in it is needed to process the request.
 	protected JsonValue getRequestBody(HttpServletRequest req) throws IOException {
 		if (haveReqBody == 1) return reqBody;
 		if (haveReqBody == -1) return null;
 		try {
-			reqBody = Json.parse((Reader)req.getReader());
+			reqBody = Json.parse(req.getReader());
 			haveReqBody = 1;
 			return reqBody;
-		} catch (ParseException ex) {
-			System.err.println(ex.getMessage());
+		} catch (ParseException pex) {
+			System.err.println(pex.getMessage());
 			haveReqBody = -1;
 			return null;
 		}

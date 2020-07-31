@@ -51,6 +51,7 @@ public final class JSONTools {
 	 * @return true if the conversion completes, false if the conversion fails.
 	 */
 	public static boolean convertJsonObjectToRow (JsonValue jv, Row row) {
+		if (jv == null) return false;
 		if (!jv.isObject()) return false;
 		JsonObject jo = jv.asObject();
 		if (jo.size() != row.size()) return false;
