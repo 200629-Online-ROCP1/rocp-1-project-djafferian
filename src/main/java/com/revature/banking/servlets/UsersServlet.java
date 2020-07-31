@@ -60,15 +60,16 @@ public class UsersServlet extends HelperServlet {
 		String[] action = getPathArguments(req);
 		if (action == null) return;
 		try {
-			if (doGetAuthorized(req, action)) {
+			if (!doGetAuthorized(req, action)) {
 				JSONTools.securityBreach(req, res);
 				return;
 			}
 			switch (action[0]) {
 			case "users":
 				Users users = new Users();
-				JSONTools.dispenseJSON(res, action.length == 1 ?
-						users.readAll() : users.readOne(user_id));
+				JSONTools.dispenseJSON(res, action.length == 2
+						? users.readOne(Integer.parseInt(action[1]))
+						: users.readAll());
 				res.setStatus(res.SC_OK);
 			}
 	    } catch (SQLException ex) {
@@ -113,7 +114,7 @@ public class UsersServlet extends HelperServlet {
 		String[] action = getPathArguments(req);
 		if (action == null) return;
 		try {
-			if (doPostAuthorized(req, action)) {
+			if (!doPostAuthorized(req, action)) {
 				JSONTools.securityBreach(req, res);
 				return;
 			}
@@ -215,27 +216,25 @@ public class UsersServlet extends HelperServlet {
 		String[] action = getPathArguments(req);
 		if (action == null) return;
 		try {
-			if (doPostAuthorized(req, action)) {
+			if (!doPutAuthorized(req, action)) {
 				JSONTools.securityBreach(req, res);
 				return;
 			}
+			res.setStatus(res.SC_BAD_REQUEST);
 			switch (action[0]) {
 			case "users":
 				Users users = new Users();
 				Row row = users.getRow();
-				if (JSONTools.convertJsonObjectToRow(getRequestBody(req), row)) {
-					try {
-						users.update(row);
-					} catch (SQLException ex) {
-						throw ex;
-					} finally {
-						row = users.readOne(
-								((Integer)row.get("user_id")).intValue());
-						JSONTools.dispenseJSON(res, row);
-						res.setStatus(res.SC_OK);
-					}
+				if (!JSONTools.convertJsonObjectToRow(
+						getRequestBody(req), row)) return;
+				try {
+					users.update(row);
+					res.setStatus(res.SC_OK);
+				} catch (SQLException ex) {
+					handleSQLException (ex, res);
 				}
-				res.setStatus(res.SC_BAD_REQUEST);
+				row = users.readOne(((Integer)row.get("user_id")).intValue());
+				JSONTools.dispenseJSON(res, row);
 			}
 		} catch (SQLException ex) {
 			handleSQLException (ex, res);

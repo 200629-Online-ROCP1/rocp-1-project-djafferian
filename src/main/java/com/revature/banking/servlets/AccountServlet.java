@@ -13,6 +13,7 @@ import com.revature.banking.sql.Users;
 import java.io.IOException;
 import java.io.Reader;
 import java.sql.SQLException;
+import java.util.ArrayList;
 import java.util.regex.Pattern;
 
 import javax.servlet.ServletException;
@@ -41,58 +42,6 @@ public class AccountServlet extends HelperServlet {
 		super(GET_URIpatternStrings, POST_URIpatternStrings, PUT_URIpatternStrings);
 	}
 	
-	public boolean authorized (HttpServletRequest req, String[] action)
-			throws SQLException, IOException {
-
-		HttpSession session = req.getSession(false);
-		if (session == null) return false;
-		Row row = getSessionUser(session);
-		
-		Roles role = (Roles)row.get("role");		
-		if (role == null) return false;
-		if (role == Roles.administrator) return true;
-		String method = req.getMethod();
-		if (role == Roles.employee) switch (method) {
-		case "GET":
-			return true;
-		case "POST":
-			if (action.length == 1) return true;
-		}
-
-		int user_id = ((Integer)row.get("user_id")).intValue();
-		AccountUsers au = new AccountUsers();
-		switch (action[0]) {
-		case "accounts":
-			switch (method) {
-			case "GET":
-				if (action.length == 1) return false;
-				return au.accountOwner(Integer.parseInt(action[1]), user_id);
-			case "POST":
-				return true;
-			}
-		case "accounts/owner":
-			switch (method) {
-			case "GET":
-				if (action.length == 1) return false;
-				return Integer.parseInt(action[1]) == user_id;	
-			}
-		}
-		
-		JsonValue reqBody = getRequestBody(req);		
-		if (reqBody == null) return false;
-		int account_id = 0;
-		switch (action[0]) {
-		case "accounts/deposit":
-		case "accounts/withdraw":
-			account_id = reqBody.asObject().get("accountId").asInt();
-			break;
-		case "accounts/transfer":
-			account_id = reqBody.asObject().get("sourceAccountId").asInt();
-		}
-		if (account_id == 0) return false;
-		return au.accountOwner(account_id, user_id);
-	}
-		
 	private boolean doGetAuthorized (HttpServletRequest req, String[] action)
 			throws SQLException {
 		HttpSession session = req.getSession(false);
@@ -103,13 +52,13 @@ public class AccountServlet extends HelperServlet {
 		if (role == Roles.administrator) return true;
 		if (role == Roles.employee) return true;	// because this is a GET
 		int user_id = ((Integer)row.get("user_id")).intValue();
+		Account account = new Account();
 		switch (action[0]) {
 		case "accounts":
-			if (action.length == 1) return false;
-			AccountUsers au = new AccountUsers();
-			return au.accountOwner(Integer.parseInt(action[1]), user_id);
+			row = account.readOne(Integer.parseInt(action[1]));
+			return ((Integer)row.get("user_id")).intValue() == user_id;
 		case "accounts/owner":
-			return Integer.parseInt(action[1]) == user_id;	
+			return Integer.parseInt(action[1]) == user_id;
 		case "accounts/status":
 			return false;
 		}
@@ -125,7 +74,7 @@ public class AccountServlet extends HelperServlet {
 		String[] action = getPathArguments(req);
 		if (action == null) return;
 		try {
-			if (doGetAuthorized(req, action)) {
+			if (!doGetAuthorized(req, action)) {
 				JSONTools.securityBreach(req, res);
 				return;
 			}
@@ -137,7 +86,7 @@ public class AccountServlet extends HelperServlet {
 					account.readOne(Integer.parseInt(action[1]));
 				break;
 			case "accounts/owner":
-				obj = null;	// Awaits the CREATE VIEW
+				obj = account.readSome("user_id", Integer.parseInt(action[1]));
 				break;
 			case "accounts/status":
 				obj = account.readSome("status", action[1]);
@@ -158,25 +107,26 @@ public class AccountServlet extends HelperServlet {
 		if (row == null) return false;
 		Roles role = (Roles)row.get("role");
 		if (role == Roles.administrator) return true;
-		JsonValue reqBody = getRequestBody(req);		
+		JsonObject reqBody = getRequestBody(req).asObject();		
 		if (reqBody == null) return false;
+		int user_id = ((Integer)row.get("user_id")).intValue();
 		int account_id = 0;
 		switch (action[0]) {
 		case "accounts":
 			if (role == Roles.employee) return true;
-			return true;
+			return reqBody.get("user_id").asInt() == user_id;
 		case "accounts/deposit":
 		case "accounts/withdraw":
-			account_id = reqBody.asObject().get("accountId").asInt();
+			account_id = reqBody.get("accountId").asInt();
 			break;
 		case "accounts/transfer":
-			account_id = reqBody.asObject().get("sourceAccountId").asInt();
+			account_id = reqBody.get("sourceAccountId").asInt();
 			break;
 		}
 		if (account_id == 0) return false;
-		int user_id = ((Integer)row.get("user_id")).intValue();
-		AccountUsers au = new AccountUsers();
-		return au.accountOwner(account_id, user_id);
+		Account account = new Account();
+		row = account.readOne(account_id);
+		return ((Integer)row.get("user_id")).intValue() == user_id;
 	}
 
 	@SuppressWarnings("static-access")
@@ -189,7 +139,7 @@ public class AccountServlet extends HelperServlet {
 		String[] action = getPathArguments(req);
 		if (action == null) return;
 		try {
-			if (!authorized(req, action)) {
+			if (!doPostAuthorized(req, action)) {
 				JSONTools.securityBreach(req, res);
 				return;
 			}
@@ -209,13 +159,6 @@ public class AccountServlet extends HelperServlet {
 					res.setStatus(res.SC_INTERNAL_SERVER_ERROR);
 					return;
 				}
-				HttpSession session = req.getSession(false);
-				Integer userId = (Integer)session.getAttribute("user_id");
-				AccountUsers au = new AccountUsers();
-				row = au.getRow();
-				row.put("user_id", userId);
-				row.put("account_id", Integer.valueOf(account_id));
-				au.create(row);
 				JSONTools.dispenseJSON(res, account.readOne(account_id));
 				res.setStatus(res.SC_CREATED);
 				return;
@@ -244,6 +187,8 @@ public class AccountServlet extends HelperServlet {
 				balance = ((Double)row.get("balance")).doubleValue();
 				if (txn.size() != 2 || amount <= 0 || balance < amount ||
 						Double.valueOf(amount).isNaN()) {
+					JSONTools.dispenseJSONMessage(res, "$"+amount+
+							" could not be withdrawn from Account #"+account_id);
 					res.setStatus(res.SC_BAD_REQUEST);
 					return;
 				}
@@ -262,6 +207,8 @@ public class AccountServlet extends HelperServlet {
 				balance = ((Double)row.get("balance")).doubleValue();
 				if (txn.size() != 3 || amount <= 0 || balance < amount ||
 						Double.valueOf(amount).isNaN()) {
+					JSONTools.dispenseJSONMessage(res, "$"+amount+
+							" could not be withdrawn from Account #"+sourceAccountId);
 					res.setStatus(res.SC_BAD_REQUEST);
 					return;
 				}
@@ -310,7 +257,7 @@ public class AccountServlet extends HelperServlet {
 		String[] action = getPathArguments(req);
 		if (action == null) return;
 		try {
-			if (!authorized(req, action)) {
+			if (!doPutAuthorized(req, action)) {
 				JSONTools.securityBreach(req, res);
 				return;
 			}

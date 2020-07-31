@@ -35,6 +35,7 @@ CREATE SEQUENCE banking.account_account_id_seq
 	START 1
 	CACHE 1
 	NO CYCLE;
+	
 -- DROP SEQUENCE banking.users_user_id_seq;
 
 CREATE SEQUENCE banking.users_user_id_seq
@@ -43,20 +44,7 @@ CREATE SEQUENCE banking.users_user_id_seq
 	MAXVALUE 2147483647
 	START 1
 	CACHE 1
-	NO CYCLE;-- banking.account definition
-
--- Drop table
-
--- DROP TABLE banking.account;
-
-CREATE TABLE banking.account (
-	account_id serial NOT NULL,
-	balance numeric(11,2) NOT NULL DEFAULT 0,
-	status banking.statuses NULL,
-	"type" banking."types" NULL,
-	CONSTRAINT account_pk PRIMARY KEY (account_id)
-);
-
+	NO CYCLE;
 
 -- banking.users definition
 
@@ -77,27 +65,21 @@ CREATE TABLE banking.users (
 	CONSTRAINT users_un_1 UNIQUE (email)
 );
 
-
--- banking.account_users definition
+-- banking.account definition
 
 -- Drop table
 
--- DROP TABLE banking.account_users;
+-- DROP TABLE banking.account;
 
-CREATE TABLE banking.account_users (
-	account_id int4 NOT NULL,
+CREATE TABLE banking.account (
+	account_id serial NOT NULL,
 	user_id int4 NOT NULL,
-	account_users_id serial NOT NULL,
-	CONSTRAINT account_users_pk PRIMARY KEY (account_users_id),
-	CONSTRAINT account_users_fk FOREIGN KEY (account_id) REFERENCES account(account_id),
-	CONSTRAINT account_users_fk_1 FOREIGN KEY (user_id) REFERENCES users(user_id)
+	balance double precision NOT NULL DEFAULT 0,
+	status banking.statuses NULL,
+	"type" banking."types" NULL,
+	CONSTRAINT account_pk PRIMARY KEY (account_id),
+	CONSTRAINT account_fk FOREIGN KEY (user_id) REFERENCES banking.users(user_id)
 );
 
-CREATE VIEW accounts_users_view AS
-SELECT *
-FROM account_users
-	JOIN users USING (user_id)
-	JOIN account USING (account_id)
-
-INSERT INTO banking.users VALUES (0,'djafferian','password',
+INSERT INTO banking.users VALUES (1,'djafferian','password',
 'David','Jafferian','djafferian@gmail.com','administrator');

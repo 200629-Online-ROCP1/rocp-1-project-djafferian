@@ -1,5 +1,6 @@
 package com.revature.banking.sql;
 
+import java.math.BigDecimal;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -119,11 +120,14 @@ public abstract class Table implements DBContext {
 			case "character varying" :
 				o = new String();
 				break;
+			case "double precision" :
+				o = Double.valueOf(0);
+				break;
 			case "integer" :
 				o = Integer.valueOf(0);
 				break;
 			case "numeric" :
-				o = Double.valueOf(0);
+				o = BigDecimal.valueOf(0);
 				break;
 			// ENUM
 			case "USER-DEFINED" :

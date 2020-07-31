@@ -108,7 +108,14 @@ public abstract class HelperServlet extends HttpServlet {
     	System.err.println("SQLState: " + ex.getSQLState());
     	System.err.println("VendorError: " + ex.getErrorCode());
 		ex.printStackTrace();
-		res.setStatus(res.SC_INTERNAL_SERVER_ERROR);
+		switch (ex.getSQLState()) {
+		default:
+			res.setStatus(res.SC_INTERNAL_SERVER_ERROR);
+			break;
+		case "22P02":
+			res.setStatus(res.SC_BAD_REQUEST);
+			break;
+		}
 	}
 
 }
